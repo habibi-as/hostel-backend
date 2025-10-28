@@ -53,6 +53,8 @@ app.use(
       "https://asuraxhostel.netlify.app",
       "http://localhost:3000",
     ],
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
   })
 );
