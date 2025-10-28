@@ -8,7 +8,7 @@ const path = require("path");
 require("dotenv").config();
 const mongoose = require("mongoose");
 
-// Import Routes
+// ✅ Import Routes
 const authRoutes = require("./routes/auth");
 const userRoutes = require("./routes/users");
 const roomRoutes = require("./routes/rooms");
@@ -31,42 +31,43 @@ const chatbotRoutes = require("./routes/chatbot");
 const app = express();
 const server = http.createServer(app);
 
-// ✅ Frontend URLs allowed
+// ✅ Allowed frontend URLs
 const allowedOrigins = [
   "https://asuraxhostel.netlify.app",
   "http://localhost:3000",
 ];
 
-// ✅ CORS Setup (permanent + preflight fix)
+// ✅ CORS Setup (put FIRST before any middleware)
 const corsOptions = {
   origin: function (origin, callback) {
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
+      console.log("❌ Blocked by CORS:", origin);
       callback(new Error("Not allowed by CORS"));
     }
   },
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true,
-  optionsSuccessStatus: 200, // Important for older browsers
+  optionsSuccessStatus: 200,
 };
 
+// ⚠️ Must be FIRST
 app.use(cors(corsOptions));
-// ✅ Handle OPTIONS preflight for all routes
-app.options("*", cors(corsOptions));
+app.options("*", cors(corsOptions)); // Handle preflight for all routes
 
-// ✅ Helmet for security
-app.use(helmet());
+// ✅ Helmet (AFTER CORS)
+app.use(helmet({ crossOriginResourcePolicy: false }));
 
-// ✅ Rate Limiting
+// ✅ Rate Limiter
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
 });
 app.use(limiter);
 
-// ✅ Body Parsing
+// ✅ Body Parsers
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
@@ -96,7 +97,7 @@ app.use("/api/feedback", feedbackRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/chatbot", chatbotRoutes);
 
-// ✅ Socket.io setup with CORS
+// ✅ Socket.io with matching CORS
 const io = socketIo(server, {
   cors: {
     origin: allowedOrigins,
@@ -111,20 +112,25 @@ io.on("connection", (socket) => {
   socket.on("send-message", (data) =>
     io.to(data.room).emit("new-message", data)
   );
-  socket.on("disconnect", () => console.log("🔴 User disconnected:", socket.id));
+  socket.on("disconnect", () =>
+    console.log("🔴 User disconnected:", socket.id)
+  );
 });
 
-// ✅ Default route to check API status
+// ✅ Health check route
 app.get("/", (req, res) => {
-  res.json({ success: true, message: "Backend is live and CORS configured ✅" });
+  res.json({
+    success: true,
+    message: "Backend is live and CORS configured ✅",
+  });
 });
 
-// ✅ Error Handling
+// ✅ Error Handler
 app.use((err, req, res, next) => {
   console.error("Error:", err.message);
   res.status(500).json({
     success: false,
-    message: "Internal Server Error",
+    message: err.message || "Internal Server Error",
   });
 });
 
@@ -135,6 +141,8 @@ app.use("*", (req, res) => {
 
 // ✅ Start Server
 const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+server.listen(PORT, () =>
+  console.log(`🚀 Server running on port ${PORT}`)
+);
 
 module.exports = { app, io };
