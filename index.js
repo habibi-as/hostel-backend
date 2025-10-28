@@ -5,8 +5,8 @@ const rateLimit = require("express-rate-limit");
 const http = require("http");
 const socketIo = require("socket.io");
 const path = require("path");
-const mongoose = require("mongoose");
 require("dotenv").config();
+const mongoose = require("mongoose");
 
 // Import Routes
 const authRoutes = require("./routes/auth");
@@ -31,63 +31,49 @@ const chatbotRoutes = require("./routes/chatbot");
 const app = express();
 const server = http.createServer(app);
 
-// ✅ Allowed origins (Netlify + Local)
+// ✅ Frontend URLs allowed
 const allowedOrigins = [
-  "https://asuraxhostel.netlify.app",
-  "http://localhost:3000",
+  "https://asuraxhostel.netlify.app", // your Netlify site
+  "http://localhost:3000", // for local testing
 ];
 
-// ✅ Socket.io setup
-const io = socketIo(server, {
-  cors: {
-    origin: allowedOrigins,
-    methods: ["GET", "POST"],
-    credentials: true,
-  },
-});
-
-// 🧠 Security
-app.use(helmet());
-
-// ✅ Global CORS Middleware
+// ✅ CORS Setup (permanent fix)
 app.use(
   cors({
     origin: function (origin, callback) {
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
       }
-      return callback(new Error("Not allowed by CORS"));
     },
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
   })
 );
 
-// 🕒 Rate Limiting
+// ✅ Helmet for security
+app.use(helmet());
+
+// ✅ Rate Limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
 });
 app.use(limiter);
 
-// 🧩 Body Parsers
+// ✅ Body Parsing
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-// 🗂️ Static Files
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-
-// 🧬 MongoDB Connection
-const MONGO_URI = process.env.MONGO_URI;
+// ✅ MongoDB Connection
 mongoose
-  .connect(MONGO_URI)
+  .connect(process.env.MONGO_URI)
   .then(() => console.log("✅ Connected to MongoDB Atlas"))
-  .catch((err) => {
-    console.error("❌ MongoDB Connection Error:", err.message);
-    process.exit(1);
-  });
+  .catch((err) => console.error("❌ MongoDB Error:", err.message));
 
-// 🚀 API Routes
+// ✅ API Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/rooms", roomRoutes);
@@ -107,45 +93,43 @@ app.use("/api/feedback", feedbackRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/chatbot", chatbotRoutes);
 
-// 💬 Socket.io Events
+// ✅ Socket.io setup with CORS
+const io = socketIo(server, {
+  cors: {
+    origin: allowedOrigins,
+    methods: ["GET", "POST"],
+    credentials: true,
+  },
+});
+
 io.on("connection", (socket) => {
   console.log("🟢 User connected:", socket.id);
-
-  socket.on("join-room", (room) => {
-    socket.join(room);
-    console.log(`📦 User ${socket.id} joined room: ${room}`);
-  });
-
-  socket.on("send-message", (data) => {
-    io.to(data.room).emit("new-message", data);
-  });
-
-  socket.on("disconnect", () => {
-    console.log("🔴 User disconnected:", socket.id);
-  });
+  socket.on("join-room", (room) => socket.join(room));
+  socket.on("send-message", (data) => io.to(data.room).emit("new-message", data));
+  socket.on("disconnect", () => console.log("🔴 User disconnected:", socket.id));
 });
 
-// ❗ Error Handling
+// ✅ Default route to check API status
+app.get("/", (req, res) => {
+  res.json({ success: true, message: "Backend is live and CORS configured ✅" });
+});
+
+// ✅ Error Handling
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  console.error("Error:", err.message);
   res.status(500).json({
     success: false,
-    message: "Internal server error",
+    message: "Internal Server Error",
   });
 });
 
-// 🚫 404 Handler
+// ✅ 404
 app.use("*", (req, res) => {
-  res.status(404).json({
-    success: false,
-    message: "Route not found",
-  });
+  res.status(404).json({ success: false, message: "Route not found" });
 });
 
-// ⚙️ Start Server
+// ✅ Start Server
 const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-});
+server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
 
 module.exports = { app, io };
