@@ -4,7 +4,6 @@ const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const http = require("http");
 const socketIo = require("socket.io");
-const path = require("path");
 require("dotenv").config();
 const mongoose = require("mongoose");
 
@@ -31,53 +30,49 @@ const chatbotRoutes = require("./routes/chatbot");
 const app = express();
 const server = http.createServer(app);
 
-// ✅ Allowed frontend URLs
+// ✅ Allowed frontend origins
 const allowedOrigins = [
   "https://asuraxhostel.netlify.app",
   "http://localhost:3000",
 ];
 
-// ✅ CORS Setup (put FIRST before any middleware)
-const corsOptions = {
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      console.log("❌ Blocked by CORS:", origin);
-      callback(new Error("Not allowed by CORS"));
-    }
-  },
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-  credentials: true,
-  optionsSuccessStatus: 200,
-};
+// ✅ Fix: Universal CORS middleware (handles preflight + headers manually)
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.header("Access-Control-Allow-Origin", origin);
+  }
+  res.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type,Authorization");
+  res.header("Access-Control-Allow-Credentials", "true");
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+  next();
+});
 
-// ⚠️ Must be FIRST
-app.use(cors(corsOptions));
-app.options("*", cors(corsOptions)); // Handle preflight for all routes
-
-// ✅ Helmet (AFTER CORS)
+// ✅ Helmet (must come AFTER custom CORS headers)
 app.use(helmet({ crossOriginResourcePolicy: false }));
 
 // ✅ Rate Limiter
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-});
-app.use(limiter);
+app.use(
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 100,
+  })
+);
 
 // ✅ Body Parsers
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-// ✅ MongoDB Connection
+// ✅ MongoDB
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => console.log("✅ Connected to MongoDB Atlas"))
   .catch((err) => console.error("❌ MongoDB Error:", err.message));
 
-// ✅ API Routes
+// ✅ Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/rooms", roomRoutes);
@@ -97,7 +92,7 @@ app.use("/api/feedback", feedbackRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/chatbot", chatbotRoutes);
 
-// ✅ Socket.io with matching CORS
+// ✅ Socket.io setup
 const io = socketIo(server, {
   cors: {
     origin: allowedOrigins,
@@ -107,42 +102,30 @@ const io = socketIo(server, {
 });
 
 io.on("connection", (socket) => {
-  console.log("🟢 User connected:", socket.id);
+  console.log("🟢 Socket connected:", socket.id);
   socket.on("join-room", (room) => socket.join(room));
-  socket.on("send-message", (data) =>
-    io.to(data.room).emit("new-message", data)
-  );
-  socket.on("disconnect", () =>
-    console.log("🔴 User disconnected:", socket.id)
-  );
+  socket.on("send-message", (data) => io.to(data.room).emit("new-message", data));
+  socket.on("disconnect", () => console.log("🔴 Socket disconnected:", socket.id));
 });
 
-// ✅ Health check route
+// ✅ Health Check
 app.get("/", (req, res) => {
-  res.json({
-    success: true,
-    message: "Backend is live and CORS configured ✅",
-  });
+  res.json({ success: true, message: "Backend online ✅ (CORS fixed)" });
 });
 
 // ✅ Error Handler
 app.use((err, req, res, next) => {
   console.error("Error:", err.message);
-  res.status(500).json({
-    success: false,
-    message: err.message || "Internal Server Error",
-  });
+  res.status(500).json({ success: false, message: err.message || "Server error" });
 });
 
-// ✅ 404
+// ✅ 404 Handler
 app.use("*", (req, res) => {
   res.status(404).json({ success: false, message: "Route not found" });
 });
 
 // ✅ Start Server
 const PORT = process.env.PORT || 10000;
-server.listen(PORT, () =>
-  console.log(`🚀 Server running on port ${PORT}`)
-);
+server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
 
 module.exports = { app, io };
