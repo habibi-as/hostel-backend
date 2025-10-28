@@ -47,17 +47,23 @@ const io = socketIo(server, {
 app.use(helmet());
 
 // ✅ Universal CORS configuration (Netlify + local)
-app.use(
-  cors({
-    origin: [
-      "https://asuraxhostel.netlify.app",
-      "http://localhost:3000",
-    ],
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: true,
-  })
-);
+const allowedOrigins = [
+  "https://asuraxhostel.netlify.app",
+  "http://localhost:3000"
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, Postman)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true,
+}));
 
 // 🕒 Rate Limiting
 const limiter = rateLimit({
