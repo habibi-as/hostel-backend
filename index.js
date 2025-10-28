@@ -33,25 +33,28 @@ const server = http.createServer(app);
 
 // ✅ Frontend URLs allowed
 const allowedOrigins = [
-  "https://asuraxhostel.netlify.app", // your Netlify site
-  "http://localhost:3000", // for local testing
+  "https://asuraxhostel.netlify.app",
+  "http://localhost:3000",
 ];
 
-// ✅ CORS Setup (permanent fix)
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
-      }
-    },
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: true,
-  })
-);
+// ✅ CORS Setup (permanent + preflight fix)
+const corsOptions = {
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true,
+  optionsSuccessStatus: 200, // Important for older browsers
+};
+
+app.use(cors(corsOptions));
+// ✅ Handle OPTIONS preflight for all routes
+app.options("*", cors(corsOptions));
 
 // ✅ Helmet for security
 app.use(helmet());
@@ -105,7 +108,9 @@ const io = socketIo(server, {
 io.on("connection", (socket) => {
   console.log("🟢 User connected:", socket.id);
   socket.on("join-room", (room) => socket.join(room));
-  socket.on("send-message", (data) => io.to(data.room).emit("new-message", data));
+  socket.on("send-message", (data) =>
+    io.to(data.room).emit("new-message", data)
+  );
   socket.on("disconnect", () => console.log("🔴 User disconnected:", socket.id));
 });
 
