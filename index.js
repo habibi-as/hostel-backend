@@ -3,11 +3,10 @@ const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const http = require("http");
-const socketIo = require("socket.io");
 require("dotenv").config();
 const mongoose = require("mongoose");
 
-// ✅ Import Routes
+// ✅ Import all route files
 const authRoutes = require("./routes/auth");
 const userRoutes = require("./routes/users");
 const roomRoutes = require("./routes/rooms");
@@ -30,49 +29,51 @@ const chatbotRoutes = require("./routes/chatbot");
 const app = express();
 const server = http.createServer(app);
 
-// ✅ Allowed frontend origins
+// ✅ Allowed frontend URLs (Netlify + local dev)
 const allowedOrigins = [
   "https://asuraxhostel.netlify.app",
-  "http://localhost:3000",
+  "http://localhost:3000"
 ];
 
-// ✅ Fix: Universal CORS middleware (handles preflight + headers manually)
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  if (allowedOrigins.includes(origin)) {
-    res.header("Access-Control-Allow-Origin", origin);
-  }
-  res.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Content-Type,Authorization");
-  res.header("Access-Control-Allow-Credentials", "true");
-  if (req.method === "OPTIONS") {
-    return res.sendStatus(200);
-  }
-  next();
-});
+// ✅ CORS configuration
+const corsOptions = {
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.log("❌ CORS blocked origin:", origin);
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true,
+  optionsSuccessStatus: 204
+};
 
-// ✅ Helmet (must come AFTER custom CORS headers)
+// ✅ Apply CORS first
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions)); // Handle preflight requests
+
+// ✅ Helmet for security (after CORS)
 app.use(helmet({ crossOriginResourcePolicy: false }));
 
-// ✅ Rate Limiter
-app.use(
-  rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 100,
-  })
-);
+// ✅ Rate limiting to prevent abuse
+app.use(rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100
+}));
 
-// ✅ Body Parsers
+// ✅ Body parsers
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-// ✅ MongoDB
-mongoose
-  .connect(process.env.MONGO_URI)
-  .then(() => console.log("✅ Connected to MongoDB Atlas"))
-  .catch((err) => console.error("❌ MongoDB Error:", err.message));
+// ✅ MongoDB connection
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => console.log("✅ Connected to MongoDB"))
+  .catch(err => console.error("❌ MongoDB Error:", err.message));
 
-// ✅ Routes
+// ✅ API routes
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/rooms", roomRoutes);
@@ -92,40 +93,30 @@ app.use("/api/feedback", feedbackRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/chatbot", chatbotRoutes);
 
-// ✅ Socket.io setup
-const io = socketIo(server, {
-  cors: {
-    origin: allowedOrigins,
-    methods: ["GET", "POST"],
-    credentials: true,
-  },
-});
-
-io.on("connection", (socket) => {
-  console.log("🟢 Socket connected:", socket.id);
-  socket.on("join-room", (room) => socket.join(room));
-  socket.on("send-message", (data) => io.to(data.room).emit("new-message", data));
-  socket.on("disconnect", () => console.log("🔴 Socket disconnected:", socket.id));
-});
-
-// ✅ Health Check
+// ✅ Health check route
 app.get("/", (req, res) => {
-  res.json({ success: true, message: "Backend online ✅ (CORS fixed)" });
+  res.json({
+    success: true,
+    message: "Backend is live and CORS configured ✅"
+  });
 });
 
-// ✅ Error Handler
+// ✅ Global error handler (including CORS)
 app.use((err, req, res, next) => {
-  console.error("Error:", err.message);
-  res.status(500).json({ success: false, message: err.message || "Server error" });
+  if (err.message === "Not allowed by CORS") {
+    return res.status(403).json({ message: "Forbidden: Not allowed by CORS policy" });
+  }
+  console.error("🔥 Server Error:", err);
+  res.status(500).json({ message: "Internal Server Error" });
 });
 
-// ✅ 404 Handler
+// ✅ 404 route
 app.use("*", (req, res) => {
   res.status(404).json({ success: false, message: "Route not found" });
 });
 
-// ✅ Start Server
+// ✅ Start server
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
 
-module.exports = { app, io };
+module.exports = app;
