@@ -30,24 +30,37 @@ const chatbotRoutes = require('./routes/chatbot');
 
 const app = express();
 const server = http.createServer(app);
+
+// ✅ Socket.io setup with CORS for both local + production
 const io = socketIo(server, {
   cors: {
-    origin: process.env.CLIENT_URL || "http://localhost:3000",
-    methods: ["GET", "POST"]
-  }
+    origin: [
+      "https://asuraxhostel.netlify.app", // Netlify frontend
+      "http://localhost:3000" // Local testing (optional)
+    ],
+    methods: ["GET", "POST"],
+    credentials: true,
+  },
 });
 
 // 🧠 Security middleware
 app.use(helmet());
-app.use(cors({
-  origin: process.env.CLIENT_URL || "http://localhost:3000",
-  credentials: true
-}));
+
+// ✅ Universal CORS configuration (Netlify + local)
+app.use(
+  cors({
+    origin: [
+      "https://asuraxhostel.netlify.app",
+      "http://localhost:3000",
+    ],
+    credentials: true,
+  })
+);
 
 // 🕒 Rate Limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100
+  max: 100,
 });
 app.use(limiter);
 
@@ -61,17 +74,18 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // 🧬 MongoDB Connection
 const MONGO_URI = process.env.MONGO_URI;
 
-mongoose.connect(MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-})
-.then(() => console.log('✅ Connected to MongoDB Atlas'))
-.catch(err => {
-  console.error('❌ MongoDB Connection Error:', err.message);
-  process.exit(1);
-});
+mongoose
+  .connect(MONGO_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  })
+  .then(() => console.log('✅ Connected to MongoDB Atlas'))
+  .catch((err) => {
+    console.error('❌ MongoDB Connection Error:', err.message);
+    process.exit(1);
+  });
 
-// 🚀 Routes
+// 🚀 API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/rooms', roomRoutes);
@@ -91,7 +105,7 @@ app.use('/api/feedback', feedbackRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/chatbot', chatbotRoutes);
 
-// 💬 Socket.io for Real-time Chat
+// 💬 Socket.io Events
 io.on('connection', (socket) => {
   console.log('🟢 User connected:', socket.id);
 
@@ -112,18 +126,18 @@ io.on('connection', (socket) => {
 // ❗ Error Handling Middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  res.status(500).json({ 
-    success: false, 
+  res.status(500).json({
+    success: false,
     message: 'Something went wrong!',
-    error: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'
+    error: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error',
   });
 });
 
 // 🚫 404 Handler
 app.use('*', (req, res) => {
-  res.status(404).json({ 
-    success: false, 
-    message: 'Route not found' 
+  res.status(404).json({
+    success: false,
+    message: 'Route not found',
   });
 });
 
