@@ -1,3 +1,4 @@
+// index.js (or server.js)
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
@@ -35,9 +36,10 @@ const allowedOrigins = [
   "http://localhost:3000"
 ];
 
-// ✅ CORS configuration
+// ✅ Robust CORS configuration
 const corsOptions = {
   origin: function (origin, callback) {
+    // Allow requests with no origin (e.g., mobile apps, curl)
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
@@ -45,31 +47,34 @@ const corsOptions = {
       callback(new Error("Not allowed by CORS"));
     }
   },
-  methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true,
   optionsSuccessStatus: 204
 };
 
-// ✅ Apply CORS first
+// ✅ CORS must be applied before everything else
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions)); // Handle preflight requests
 
-// ✅ Helmet for security (after CORS)
+// ✅ Security middlewares
 app.use(helmet({ crossOriginResourcePolicy: false }));
 
-// ✅ Rate limiting to prevent abuse
+// ✅ Rate limiting (basic DoS protection)
 app.use(rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 15 * 60 * 1000,
   max: 100
 }));
 
-// ✅ Body parsers
+// ✅ Body parsing
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // ✅ MongoDB connection
-mongoose.connect(process.env.MONGO_URI)
+mongoose.connect(process.env.MONGO_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+})
   .then(() => console.log("✅ Connected to MongoDB"))
   .catch(err => console.error("❌ MongoDB Error:", err.message));
 
@@ -93,7 +98,7 @@ app.use("/api/feedback", feedbackRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/chatbot", chatbotRoutes);
 
-// ✅ Health check route
+// ✅ Root health check route
 app.get("/", (req, res) => {
   res.json({
     success: true,
@@ -101,16 +106,19 @@ app.get("/", (req, res) => {
   });
 });
 
-// ✅ Global error handler (including CORS)
+// ✅ Global error handler (includes CORS rejection)
 app.use((err, req, res, next) => {
   if (err.message === "Not allowed by CORS") {
-    return res.status(403).json({ message: "Forbidden: Not allowed by CORS policy" });
+    return res.status(403).json({
+      success: false,
+      message: "Forbidden: Not allowed by CORS policy"
+    });
   }
   console.error("🔥 Server Error:", err);
-  res.status(500).json({ message: "Internal Server Error" });
+  res.status(500).json({ success: false, message: "Internal Server Error" });
 });
 
-// ✅ 404 route
+// ✅ Catch-all for 404
 app.use("*", (req, res) => {
   res.status(404).json({ success: false, message: "Route not found" });
 });
