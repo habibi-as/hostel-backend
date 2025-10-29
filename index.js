@@ -1,4 +1,4 @@
-// index.js (final fixed version)
+// index.js
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
@@ -36,16 +36,26 @@ const allowedOrigins = [
   "http://localhost:3000"
 ];
 
-// ✅ Simple + reliable CORS config
-app.use(cors({
-  origin: allowedOrigins,
+// ✅ Enhanced CORS handling (fixes preflight)
+const corsOptions = {
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.log("❌ Blocked by CORS:", origin);
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true,
-}));
+  optionsSuccessStatus: 204
+};
 
-// ✅ Handle preflight for all routes
-app.options("*", cors());
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions)); // ✅ handle all preflight requests
 
-// ✅ Helmet (after CORS)
+// ✅ Helmet for security
 app.use(helmet({ crossOriginResourcePolicy: false }));
 
 // ✅ Rate limiting
@@ -107,6 +117,12 @@ app.use("*", (req, res) => {
 
 // ✅ Global error handler
 app.use((err, req, res, next) => {
+  if (err.message === "Not allowed by CORS") {
+    return res.status(403).json({
+      success: false,
+      message: "Forbidden: Not allowed by CORS policy"
+    });
+  }
   console.error("🔥 Server Error:", err);
   res.status(500).json({ success: false, message: "Internal Server Error" });
 });
