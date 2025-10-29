@@ -36,10 +36,9 @@ const allowedOrigins = [
   "http://localhost:3000"
 ];
 
-// ✅ Robust CORS configuration
+// ✅ CORS configuration
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow requests with no origin (e.g., mobile apps, curl)
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
@@ -53,20 +52,20 @@ const corsOptions = {
   optionsSuccessStatus: 204
 };
 
-// ✅ CORS must be applied before everything else
+// ✅ Apply CORS before anything else
 app.use(cors(corsOptions));
-app.options("*", cors(corsOptions)); // Handle preflight requests
+app.options("*", cors(corsOptions)); // Handle preflight
 
-// ✅ Security middlewares
+// ✅ Helmet for security
 app.use(helmet({ crossOriginResourcePolicy: false }));
 
-// ✅ Rate limiting (basic DoS protection)
+// ✅ Rate limiting
 app.use(rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100
 }));
 
-// ✅ Body parsing
+// ✅ Body parsers
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
@@ -98,7 +97,7 @@ app.use("/api/feedback", feedbackRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/chatbot", chatbotRoutes);
 
-// ✅ Root health check route
+// ✅ Health check
 app.get("/", (req, res) => {
   res.json({
     success: true,
@@ -106,7 +105,16 @@ app.get("/", (req, res) => {
   });
 });
 
-// ✅ Global error handler (includes CORS rejection)
+// ✅ CORS test route (for debugging)
+app.get("/api/test-cors", (req, res) => {
+  res.json({
+    success: true,
+    message: "CORS is working perfectly 🚀",
+    origin: req.headers.origin || "unknown"
+  });
+});
+
+// ✅ Global error handler
 app.use((err, req, res, next) => {
   if (err.message === "Not allowed by CORS") {
     return res.status(403).json({
@@ -118,7 +126,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ success: false, message: "Internal Server Error" });
 });
 
-// ✅ Catch-all for 404
+// ✅ 404 route
 app.use("*", (req, res) => {
   res.status(404).json({ success: false, message: "Route not found" });
 });
