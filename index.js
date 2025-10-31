@@ -7,6 +7,9 @@ const http = require("http");
 require("dotenv").config();
 const mongoose = require("mongoose");
 
+// ✅ Middleware for auth & roles
+const { authenticateToken, requireAdmin, requireStudent } = require("./middleware/auth");
+
 // ✅ Import all route files
 const authRoutes = require("./routes/auth");
 const userRoutes = require("./routes/users");
@@ -90,25 +93,32 @@ app.get("/api/test-cors", (req, res) => {
   });
 });
 
-// ✅ API routes
-app.use("/api/auth", authRoutes);
-app.use("/api/users", userRoutes);
-app.use("/api/rooms", roomRoutes);
-app.use("/api/attendance", attendanceRoutes);
-app.use("/api/fees", feeRoutes);
-app.use("/api/complaints", complaintRoutes);
-app.use("/api/notices", noticeRoutes);
-app.use("/api/lost-found", lostFoundRoutes);
-app.use("/api/chat", chatRoutes);
-app.use("/api/announcements", announcementRoutes);
-app.use("/api/food-menu", foodMenuRoutes);
-app.use("/api/laundry", laundryRoutes);
-app.use("/api/visitors", visitorRoutes);
-app.use("/api/maintenance", maintenanceRoutes);
-app.use("/api/events", eventRoutes);
-app.use("/api/feedback", feedbackRoutes);
-app.use("/api/reports", reportRoutes);
-app.use("/api/chatbot", chatbotRoutes);
+
+// ===============================
+// ✅ ROUTE CONFIGURATION
+// ===============================
+
+// Public (no auth)
+app.use("/api/auth", authRoutes); // Register / Login
+
+// Student + Admin (Authenticated)
+app.use("/api/users", authenticateToken, userRoutes);
+app.use("/api/rooms", authenticateToken, roomRoutes);
+app.use("/api/attendance", authenticateToken, requireStudent, attendanceRoutes); // Students only
+app.use("/api/fees", authenticateToken, requireStudent, feeRoutes);
+app.use("/api/complaints", authenticateToken, requireStudent, complaintRoutes);
+app.use("/api/notices", authenticateToken, noticeRoutes);
+app.use("/api/lost-found", authenticateToken, lostFoundRoutes);
+app.use("/api/chat", authenticateToken, chatRoutes);
+app.use("/api/announcements", authenticateToken, requireAdmin, announcementRoutes); // Admin only
+app.use("/api/food-menu", authenticateToken, foodMenuRoutes);
+app.use("/api/laundry", authenticateToken, requireStudent, laundryRoutes);
+app.use("/api/visitors", authenticateToken, requireAdmin, visitorRoutes);
+app.use("/api/maintenance", authenticateToken, requireAdmin, maintenanceRoutes);
+app.use("/api/events", authenticateToken, eventRoutes);
+app.use("/api/feedback", authenticateToken, feedbackRoutes);
+app.use("/api/reports", authenticateToken, requireAdmin, reportRoutes);
+app.use("/api/chatbot", authenticateToken, chatbotRoutes);
 
 // ✅ 404 handler
 app.use("*", (req, res) => {
