@@ -3,9 +3,10 @@ const router = express.Router();
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const User = require('../models/user');
+const { authenticateToken, requireAdmin, requireStudent } = require('../middleware/auth');
 require('dotenv').config();
 
-// 🧱 Register
+// 🧱 Register (for both admin and student)
 router.post('/register', async (req, res) => {
   try {
     const { name, email, password, phone, batch, role } = req.body;
@@ -18,12 +19,13 @@ router.post('/register', async (req, res) => {
     if (existingUser)
       return res.status(400).json({ success: false, message: 'User already exists' });
 
+    // Create user
     const newUser = new User({
       name,
       email,
       password,
       phone,
-      batch: role === 'student' ? batch : null, // Admin may not have batch
+      batch: role === 'student' ? batch : null,
       role
     });
 
@@ -45,10 +47,11 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// 🔑 Login
+// 🔑 Login (works for both admin & student)
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
+
     const user = await User.findOne({ email });
     if (!user)
       return res.status(400).json({ success: false, message: 'Invalid credentials' });
@@ -57,6 +60,7 @@ router.post('/login', async (req, res) => {
     if (!isMatch)
       return res.status(400).json({ success: false, message: 'Invalid credentials' });
 
+    // Generate JWT token
     const token = jwt.sign(
       { id: user._id, role: user.role },
       process.env.JWT_SECRET,
@@ -80,24 +84,36 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// 👤 Auth Test
-router.get('/profile', async (req, res) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith('Bearer '))
-    return res.status(401).json({ success: false, message: 'No token provided' });
-
+// 👤 Get user profile (auth required)
+router.get('/profile', authenticateToken, async (req, res) => {
   try {
-    const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.id).select('-password');
+    const user = await User.findById(req.user.id).select('-password');
     if (!user)
       return res.status(404).json({ success: false, message: 'User not found' });
 
     res.json({ success: true, user });
   } catch (err) {
-    console.error('❌ Token error:', err);
-    res.status(401).json({ success: false, message: 'Invalid token' });
+    console.error('❌ Profile fetch error:', err);
+    res.status(500).json({ success: false, message: 'Server error fetching profile' });
   }
+});
+
+// 🧩 Admin-only route example
+router.get('/admin/dashboard', authenticateToken, requireAdmin, (req, res) => {
+  res.json({
+    success: true,
+    message: 'Welcome Admin! This route is protected and only for admins.',
+    user: req.user
+  });
+});
+
+// 🎓 Student-only route example
+router.get('/student/dashboard', authenticateToken, requireStudent, (req, res) => {
+  res.json({
+    success: true,
+    message: 'Welcome Student! This route is protected and only for students.',
+    user: req.user
+  });
 });
 
 module.exports = router;
