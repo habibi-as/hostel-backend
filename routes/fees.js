@@ -2,7 +2,7 @@ const express = require('express');
 const PDFDocument = require('pdfkit');
 const { body, validationResult } = require('express-validator');
 const Fee = require('../models/Fee');
-const User = require('../models/User');
+const User = require('../models/user');
 const { authenticateToken, requireAdmin, requireAnyRole } = require('../middleware/auth');
 
 const router = express.Router();
