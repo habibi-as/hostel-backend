@@ -1,7 +1,7 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const db = require('../config/database');
 const { authenticateToken, requireAdmin, requireAnyRole } = require('../middleware/auth');
+const FoodMenu = require('../models/FoodMenu');
 
 const router = express.Router();
 
@@ -10,22 +10,11 @@ router.get('/', authenticateToken, requireAnyRole, async (req, res) => {
   try {
     const { day, mealType } = req.query;
 
-    let query = 'SELECT * FROM food_menu WHERE 1=1';
-    let params = [];
+    const filter = {};
+    if (day) filter.dayOfWeek = day;
+    if (mealType) filter.mealType = mealType;
 
-    if (day) {
-      query += ' AND day_of_week = ?';
-      params.push(day);
-    }
-
-    if (mealType) {
-      query += ' AND meal_type = ?';
-      params.push(mealType);
-    }
-
-    query += ' ORDER BY day_of_week, meal_type';
-
-    const [menu] = await db.promise().execute(query, params);
+    const menu = await FoodMenu.find(filter).sort({ dayOfWeek: 1, mealType: 1 });
 
     res.json({
       success: true,
@@ -58,14 +47,23 @@ router.put('/:id', authenticateToken, requireAdmin, [
     const { id } = req.params;
     const { menuItems } = req.body;
 
-    await db.promise().execute(
-      'UPDATE food_menu SET menu_items = ? WHERE id = ?',
-      [menuItems, id]
+    const menu = await FoodMenu.findByIdAndUpdate(
+      id,
+      { menuItems, updatedAt: new Date() },
+      { new: true }
     );
+
+    if (!menu) {
+      return res.status(404).json({
+        success: false,
+        message: 'Menu not found'
+      });
+    }
 
     res.json({
       success: true,
-      message: 'Food menu updated successfully'
+      message: 'Food menu updated successfully',
+      data: menu
     });
 
   } catch (error) {
