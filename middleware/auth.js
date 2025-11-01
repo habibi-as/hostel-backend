@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const User = require('../models/User'); // ✅ use Mongoose model instead of old SQL db
+const User = require('../models/user'); // ✅ use Mongoose model instead of old SQL db
 
 // ✅ Authenticate JWT token
 const authenticateToken = async (req, res, next) => {
