@@ -1,321 +1,208 @@
-const express = require('express');
-const { body, validationResult } = require('express-validator');
-const db = require('../config/database');
-const { authenticateToken, requireAnyRole } = require('../middleware/auth');
+const express = require("express");
+const { body, validationResult } = require("express-validator");
+const { authenticateToken, requireAnyRole } = require("../middleware/auth");
+const ChatMessage = require("../models/ChatMessage");
+const User = require("../models/User");
 
 const router = express.Router();
 
-// Get chat messages
-router.get('/messages', authenticateToken, requireAnyRole, async (req, res) => {
+/* ======================================
+   🟢 GET CHAT MESSAGES (Paginated)
+====================================== */
+router.get("/messages", authenticateToken, requireAnyRole, async (req, res) => {
   try {
-    const { room = 'general', page = 1, limit = 50 } = req.query;
-    const offset = (page - 1) * limit;
+    const { room = "general", page = 1, limit = 50 } = req.query;
+    const skip = (page - 1) * limit;
 
-    const [messages] = await db.promise().execute(`
-      SELECT cm.*, u.name as sender_name, u.role as sender_role, u.photo
-      FROM chat_messages cm
-      JOIN users u ON cm.sender_id = u.id
-      WHERE cm.room = ?
-      ORDER BY cm.created_at DESC
-      LIMIT ? OFFSET ?
-    `, [room, parseInt(limit), offset]);
+    const messages = await ChatMessage.find({ room })
+      .populate("sender", "name role")
+      .sort({ createdAt: 1 })
+      .skip(skip)
+      .limit(parseInt(limit));
 
-    // Reverse to show oldest first
-    messages.reverse();
-
-    res.json({
-      success: true,
-      data: messages
-    });
-
+    res.json({ success: true, data: messages });
   } catch (error) {
-    console.error('Get chat messages error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch chat messages'
-    });
+    console.error("Get chat messages error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch chat messages" });
   }
 });
 
-// Send message
-router.post('/send', authenticateToken, requireAnyRole, [
-  body('message').notEmpty().withMessage('Message is required'),
-  body('room').isIn(['general', 'announcements', 'support']).withMessage('Invalid room')
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors: errors.array()
+/* ======================================
+   🟢 SEND MESSAGE
+====================================== */
+router.post(
+  "/send",
+  authenticateToken,
+  requireAnyRole,
+  [
+    body("message").notEmpty().withMessage("Message is required"),
+    body("room").isIn(["general", "announcements", "support"]).withMessage("Invalid room"),
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ success: false, errors: errors.array() });
+      }
+
+      const { message, room = "general" } = req.body;
+      const senderId = req.user.id;
+      const isAdminMessage = req.user.role === "admin";
+
+      const newMessage = await ChatMessage.create({
+        sender: senderId,
+        message,
+        room,
+        isAdminMessage,
       });
+
+      const populatedMessage = await newMessage.populate("sender", "name role");
+
+      res.status(201).json({
+        success: true,
+        message: "Message sent successfully",
+        data: populatedMessage,
+      });
+    } catch (error) {
+      console.error("Send message error:", error);
+      res.status(500).json({ success: false, message: "Failed to send message" });
     }
-
-    const { message, room = 'general' } = req.body;
-    const senderId = req.user.id;
-    const isAdminMessage = req.user.role === 'admin';
-
-    // Save message to database
-    const [result] = await db.promise().execute(
-      'INSERT INTO chat_messages (sender_id, message, room, is_admin_message) VALUES (?, ?, ?, ?)',
-      [senderId, message, room, isAdminMessage]
-    );
-
-    // Get the saved message with user details
-    const [savedMessage] = await db.promise().execute(`
-      SELECT cm.*, u.name as sender_name, u.role as sender_role, u.photo
-      FROM chat_messages cm
-      JOIN users u ON cm.sender_id = u.id
-      WHERE cm.id = ?
-    `, [result.insertId]);
-
-    res.status(201).json({
-      success: true,
-      message: 'Message sent successfully',
-      data: savedMessage[0]
-    });
-
-  } catch (error) {
-    console.error('Send message error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to send message'
-    });
   }
-});
+);
 
-// Get chat rooms
-router.get('/rooms', authenticateToken, requireAnyRole, async (req, res) => {
+/* ======================================
+   🟢 GET CHAT ROOMS
+====================================== */
+router.get("/rooms", authenticateToken, requireAnyRole, async (req, res) => {
   try {
     const rooms = [
-      {
-        id: 'general',
-        name: 'General Chat',
-        description: 'General discussion room for all students',
-        isActive: true
-      },
-      {
-        id: 'announcements',
-        name: 'Announcements',
-        description: 'Official announcements and updates',
-        isActive: true
-      },
-      {
-        id: 'support',
-        name: 'Support',
-        description: 'Get help and support from admin',
-        isActive: true
-      }
+      { id: "general", name: "General Chat", description: "For all students", isActive: true },
+      { id: "announcements", name: "Announcements", description: "Official updates", isActive: true },
+      { id: "support", name: "Support", description: "Help from admins", isActive: true },
     ];
-
-    res.json({
-      success: true,
-      data: rooms
-    });
-
+    res.json({ success: true, data: rooms });
   } catch (error) {
-    console.error('Get chat rooms error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch chat rooms'
-    });
+    res.status(500).json({ success: false, message: "Failed to fetch chat rooms" });
   }
 });
 
-// Get online users (Admin only)
-router.get('/online-users', authenticateToken, async (req, res) => {
+/* ======================================
+   🟢 ONLINE USERS (Active last 24h)
+====================================== */
+router.get("/online-users", authenticateToken, async (req, res) => {
   try {
-    const currentUser = req.user;
+    if (req.user.role !== "admin")
+      return res.status(403).json({ success: false, message: "Access denied" });
 
-    if (currentUser.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied'
-      });
-    }
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-    // Get active users (users who have sent messages in the last 24 hours)
-    const [activeUsers] = await db.promise().execute(`
-      SELECT DISTINCT u.id, u.name, u.email, u.role, u.photo, u.room_no
-      FROM users u
-      JOIN chat_messages cm ON u.id = cm.sender_id
-      WHERE cm.created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
-        AND u.is_active = TRUE
-      ORDER BY u.name
-    `);
+    const activeUsers = await ChatMessage.find({ createdAt: { $gte: since } })
+      .distinct("sender")
+      .then(async (ids) => await User.find({ _id: { $in: ids } }, "name email role phone"));
 
-    res.json({
-      success: true,
-      data: activeUsers
-    });
-
+    res.json({ success: true, data: activeUsers });
   } catch (error) {
-    console.error('Get online users error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch online users'
-    });
+    console.error("Online users error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch online users" });
   }
 });
 
-// Get chat statistics (Admin only)
-router.get('/stats', authenticateToken, async (req, res) => {
+/* ======================================
+   🟢 CHAT STATS (Admin only)
+====================================== */
+router.get("/stats", authenticateToken, async (req, res) => {
   try {
-    const currentUser = req.user;
-
-    if (currentUser.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied'
-      });
-    }
+    if (req.user.role !== "admin")
+      return res.status(403).json({ success: false, message: "Access denied" });
 
     const { startDate, endDate } = req.query;
+    const filter = {};
 
-    let query = `
-      SELECT 
-        COUNT(*) as total_messages,
-        COUNT(DISTINCT sender_id) as active_users,
-        SUM(CASE WHEN is_admin_message = TRUE THEN 1 ELSE 0 END) as admin_messages,
-        SUM(CASE WHEN is_admin_message = FALSE THEN 1 ELSE 0 END) as student_messages
-      FROM chat_messages
-      WHERE 1=1
-    `;
-    let params = [];
-
-    if (startDate) {
-      query += ' AND DATE(created_at) >= ?';
-      params.push(startDate);
+    if (startDate || endDate) {
+      filter.createdAt = {};
+      if (startDate) filter.createdAt.$gte = new Date(startDate);
+      if (endDate) filter.createdAt.$lte = new Date(endDate);
     }
 
-    if (endDate) {
-      query += ' AND DATE(created_at) <= ?';
-      params.push(endDate);
-    }
+    const totalMessages = await ChatMessage.countDocuments(filter);
+    const activeUsers = await ChatMessage.distinct("sender", filter);
+    const adminMessages = await ChatMessage.countDocuments({ ...filter, isAdminMessage: true });
+    const studentMessages = await ChatMessage.countDocuments({ ...filter, isAdminMessage: false });
 
-    const [stats] = await db.promise().execute(query, params);
+    const roomStats = await ChatMessage.aggregate([
+      { $match: filter },
+      { $group: { _id: "$room", count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+    ]);
 
-    // Get messages by room
-    const [roomStats] = await db.promise().execute(`
-      SELECT 
-        room,
-        COUNT(*) as message_count
-      FROM chat_messages
-      WHERE 1=1
-        ${startDate ? 'AND DATE(created_at) >= ?' : ''}
-        ${endDate ? 'AND DATE(created_at) <= ?' : ''}
-      GROUP BY room
-      ORDER BY message_count DESC
-    `, startDate && endDate ? [startDate, endDate] : []);
-
-    // Get daily message count
-    const [dailyStats] = await db.promise().execute(`
-      SELECT 
-        DATE(created_at) as date,
-        COUNT(*) as message_count
-      FROM chat_messages
-      WHERE 1=1
-        ${startDate ? 'AND DATE(created_at) >= ?' : ''}
-        ${endDate ? 'AND DATE(created_at) <= ?' : ''}
-      GROUP BY DATE(created_at)
-      ORDER BY date DESC
-      LIMIT 30
-    `, startDate && endDate ? [startDate, endDate] : []);
+    const dailyStats = await ChatMessage.aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { _id: -1 } },
+      { $limit: 30 },
+    ]);
 
     res.json({
       success: true,
       data: {
-        overview: stats[0],
+        overview: {
+          totalMessages,
+          activeUsers: activeUsers.length,
+          adminMessages,
+          studentMessages,
+        },
         byRoom: roomStats,
-        daily: dailyStats
-      }
+        daily: dailyStats,
+      },
     });
-
   } catch (error) {
-    console.error('Get chat stats error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch chat statistics'
-    });
+    console.error("Chat stats error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch chat stats" });
   }
 });
 
-// Delete message (Admin only)
-router.delete('/messages/:id', authenticateToken, async (req, res) => {
+/* ======================================
+   🗑️ DELETE MESSAGE (Admin only)
+====================================== */
+router.delete("/messages/:id", authenticateToken, async (req, res) => {
   try {
-    const currentUser = req.user;
+    if (req.user.role !== "admin")
+      return res.status(403).json({ success: false, message: "Access denied" });
 
-    if (currentUser.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied'
-      });
-    }
+    const deleted = await ChatMessage.findByIdAndDelete(req.params.id);
 
-    const { id } = req.params;
+    if (!deleted)
+      return res.status(404).json({ success: false, message: "Message not found" });
 
-    // Check if message exists
-    const [messages] = await db.promise().execute(
-      'SELECT id FROM chat_messages WHERE id = ?',
-      [id]
-    );
-
-    if (messages.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'Message not found'
-      });
-    }
-
-    // Delete message
-    await db.promise().execute('DELETE FROM chat_messages WHERE id = ?', [id]);
-
-    res.json({
-      success: true,
-      message: 'Message deleted successfully'
-    });
-
+    res.json({ success: true, message: "Message deleted successfully" });
   } catch (error) {
-    console.error('Delete message error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to delete message'
-    });
+    console.error("Delete message error:", error);
+    res.status(500).json({ success: false, message: "Failed to delete message" });
   }
 });
 
-// Clear chat room (Admin only)
-router.delete('/rooms/:room/clear', authenticateToken, async (req, res) => {
+/* ======================================
+   🧹 CLEAR CHAT ROOM (Admin only)
+====================================== */
+router.delete("/rooms/:room/clear", authenticateToken, async (req, res) => {
   try {
-    const currentUser = req.user;
+    if (req.user.role !== "admin")
+      return res.status(403).json({ success: false, message: "Access denied" });
 
-    if (currentUser.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied'
-      });
-    }
-
-    const { room } = req.params;
-
-    // Clear all messages in the room
-    const [result] = await db.promise().execute(
-      'DELETE FROM chat_messages WHERE room = ?',
-      [room]
-    );
+    const result = await ChatMessage.deleteMany({ room: req.params.room });
 
     res.json({
       success: true,
-      message: `Cleared ${result.affectedRows} messages from ${room} room`
+      message: `Cleared ${result.deletedCount} messages from ${req.params.room}`,
     });
-
   } catch (error) {
-    console.error('Clear chat room error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to clear chat room'
-    });
+    console.error("Clear chat room error:", error);
+    res.status(500).json({ success: false, message: "Failed to clear chat room" });
   }
 });
 
