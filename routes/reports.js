@@ -18,14 +18,13 @@ router.get('/attendance', authenticateToken, requireAdmin, async (req, res) => {
     if (startDate || endDate) filter.date = {};
     if (startDate) filter.date.$gte = new Date(startDate);
     if (endDate) filter.date.$lte = new Date(endDate);
-
-    const students = await User.find({ role: 'student', isActive: true });
     if (batch) filter.batch = batch;
 
     const attendance = await Attendance.find(filter)
       .populate('user', 'name email batch room_no')
       .sort({ date: -1 });
 
+    // PDF export
     if (format === 'pdf') {
       const doc = new PDFDocument();
       res.setHeader('Content-Type', 'application/pdf');
@@ -48,7 +47,9 @@ router.get('/attendance', authenticateToken, requireAdmin, async (req, res) => {
       });
 
       doc.end();
-    } else if (format === 'excel') {
+    }
+    // Excel export
+    else if (format === 'excel') {
       const workbook = new ExcelJS.Workbook();
       const sheet = workbook.addWorksheet('Attendance Report');
 
@@ -131,7 +132,7 @@ router.get('/payments', authenticateToken, requireAdmin, async (req, res) => {
 // 🧾 Complaint Report
 router.get('/complaints', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { startDate, endDate, status, category, format = 'json' } = req.query;
+    const { startDate, endDate, status, category } = req.query;
     const filter = {};
 
     if (status) filter.status = status;
@@ -140,8 +141,9 @@ router.get('/complaints', authenticateToken, requireAdmin, async (req, res) => {
     if (startDate) filter.createdAt.$gte = new Date(startDate);
     if (endDate) filter.createdAt.$lte = new Date(endDate);
 
+    // FIXED: use `student` instead of `user`
     const complaints = await Complaint.find(filter)
-      .populate('user', 'name email batch room_no')
+      .populate('student', 'name email batch room_no')
       .sort({ createdAt: -1 });
 
     res.json({ success: true, data: complaints });
