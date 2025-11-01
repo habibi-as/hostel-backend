@@ -224,4 +224,5 @@ router.get('/category/:category', authenticateToken, requireAnyRole, async (req,
   }
 });
 
-module.exports = router;
+export default router;
+
