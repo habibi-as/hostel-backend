@@ -1,38 +1,29 @@
 const mongoose = require('mongoose');
 
-const ComplaintSchema = new mongoose.Schema({
+const complaintSchema = new mongoose.Schema({
   user: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User', // Reference to the User model
+    ref: 'User',
     required: true
   },
   category: {
     type: String,
-    enum: ['food', 'maintenance', 'electricity', 'cleanliness', 'security', 'other'],
-    required: true
+    enum: ['maintenance', 'food', 'room', 'electricity', 'other'],
+    default: 'other'
   },
-  title: {
-    type: String,
-    required: [true, 'Title is required']
-  },
-  description: {
-    type: String,
-    required: [true, 'Description is required']
-  },
+  title: { type: String, required: true },
+  description: { type: String, required: true },
   priority: {
     type: String,
-    enum: ['low', 'medium', 'high', 'urgent'],
+    enum: ['low', 'medium', 'high'],
     default: 'medium'
   },
   status: {
     type: String,
-    enum: ['pending', 'in_progress', 'resolved', 'rejected'],
+    enum: ['pending', 'in_progress', 'resolved'],
     default: 'pending'
   },
-  adminResponse: {
-    type: String,
-    default: ''
-  }
-}, { timestamps: true });
+  createdAt: { type: Date, default: Date.now }
+});
 
-module.exports = mongoose.model('Complaint', ComplaintSchema);
+module.exports = mongoose.model('Complaint', complaintSchema);
