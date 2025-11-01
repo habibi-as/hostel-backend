@@ -7,6 +7,7 @@ const visitorSchema = new mongoose.Schema({
   },
   contact: {
     type: String,
+    required: true,
   },
   purpose: {
     type: String,
@@ -14,8 +15,11 @@ const visitorSchema = new mongoose.Schema({
   },
   student: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User', // references the student visited
-    required: true,
+    ref: 'User',
+    required: false,
+  },
+  remarks: {
+    type: String,
   },
   checkInTime: {
     type: Date,
@@ -28,10 +32,6 @@ const visitorSchema = new mongoose.Schema({
     type: String,
     enum: ['checked_in', 'checked_out'],
     default: 'checked_in',
-  },
-  remarks: {
-    type: String,
-    default: '',
   },
 });
 
