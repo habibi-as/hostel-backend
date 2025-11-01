@@ -2,7 +2,7 @@ const express = require("express");
 const { body, validationResult } = require("express-validator");
 const { authenticateToken, requireAnyRole } = require("../middleware/auth");
 const ChatMessage = require("../models/ChatMessage");
-const User = require("../models/User");
+const User = require("../models/user");
 
 const router = express.Router();
 
