@@ -5,7 +5,7 @@ const { authenticateToken, requireAdmin } = require('../middleware/auth');
 const Attendance = require('../models/Attendance');
 const Fee = require('../models/Fee');
 const Complaint = require('../models/Complaint');
-const User = require('../models/User');
+const User = require('../models/user');
 
 const router = express.Router();
 
