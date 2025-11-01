@@ -467,4 +467,5 @@ router.get('/room/:roomNo/roommates', authenticateToken, requireAnyRole, async (
   }
 });
 
-module.exports = router;
+export default router;
+
