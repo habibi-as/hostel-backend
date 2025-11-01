@@ -162,5 +162,6 @@ router.get("/student/test", authenticateToken, requireStudent, (req, res) => {
   res.json({ message: "Welcome Student, this route is protected" });
 });
 
-module.exports = router;
+export default router;
+
 
