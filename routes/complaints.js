@@ -1,233 +1,153 @@
 const express = require('express');
-const { body, validationResult } = require('express-validator');
+const PDFDocument = require('pdfkit');
+const ExcelJS = require('exceljs');
+const { authenticateToken, requireAdmin } = require('../middleware/auth');
+const Attendance = require('../models/Attendance');
+const Fee = require('../models/Fee');
 const Complaint = require('../models/Complaint');
 const User = require('../models/User');
-const { authenticateToken, requireAdmin, requireAnyRole } = require('../middleware/auth');
 
 const router = express.Router();
 
-/**
- * @route GET /complaints
- * @desc Get all complaints (filtered + paginated)
- * @access Admin & Student (students only see their own)
- */
-router.get('/', authenticateToken, requireAnyRole, async (req, res) => {
+// 📘 Attendance Report
+router.get('/attendance', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { status, category, priority, page = 1, limit = 10 } = req.query;
-    const filters = {};
-    const currentUser = req.user;
+    const { startDate, endDate, batch, format = 'json' } = req.query;
+    const filter = {};
 
-    // Students can only view their own
-    if (currentUser.role === 'student') filters.user = currentUser.id;
-    if (status) filters.status = status;
-    if (category) filters.category = category;
-    if (priority) filters.priority = priority;
+    if (startDate || endDate) filter.date = {};
+    if (startDate) filter.date.$gte = new Date(startDate);
+    if (endDate) filter.date.$lte = new Date(endDate);
 
-    const complaints = await Complaint.find(filters)
-      .populate('user', 'name email room_no batch')
-      .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(parseInt(limit));
+    const students = await User.find({ role: 'student', isActive: true });
+    if (batch) filter.batch = batch;
 
-    const total = await Complaint.countDocuments(filters);
+    const attendance = await Attendance.find(filter)
+      .populate('user', 'name email batch room_no')
+      .sort({ date: -1 });
 
-    res.json({
-      success: true,
-      data: {
-        complaints,
-        pagination: {
-          current: parseInt(page),
-          pages: Math.ceil(total / limit),
-          total
-        }
-      }
-    });
-  } catch (error) {
-    console.error('Get complaints error:', error);
-    res.status(500).json({ success: false, message: 'Failed to fetch complaints' });
-  }
-});
+    if (format === 'pdf') {
+      const doc = new PDFDocument();
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', 'attachment; filename="attendance-report.pdf"');
+      doc.pipe(res);
 
-/**
- * @route GET /complaints/:id
- * @desc Get single complaint
- * @access Admin & Student (students only view own)
- */
-router.get('/:id', authenticateToken, requireAnyRole, async (req, res) => {
-  try {
-    const complaint = await Complaint.findById(req.params.id)
-      .populate('user', 'name email room_no batch phone');
+      doc.fontSize(20).text('ATTENDANCE REPORT', { align: 'center' });
+      doc.fontSize(12).text('Hostel Management System', { align: 'center' });
+      doc.moveDown();
 
-    if (!complaint)
-      return res.status(404).json({ success: false, message: 'Complaint not found' });
+      doc.fontSize(14).text('Report Details:', { underline: true });
+      doc.moveDown(0.5);
+      doc.text(`Period: ${startDate || 'All time'} to ${endDate || 'Current'}`);
+      if (batch) doc.text(`Batch: ${batch}`);
+      doc.text(`Total Records: ${attendance.length}`);
+      doc.moveDown();
 
-    if (req.user.role === 'student' && complaint.user._id.toString() !== req.user.id)
-      return res.status(403).json({ success: false, message: 'Access denied' });
-
-    res.json({ success: true, data: complaint });
-  } catch (error) {
-    console.error('Get complaint error:', error);
-    res.status(500).json({ success: false, message: 'Failed to fetch complaint' });
-  }
-});
-
-/**
- * @route POST /complaints
- * @desc Create a new complaint
- * @access Student & Admin
- */
-router.post(
-  '/',
-  authenticateToken,
-  requireAnyRole,
-  [
-    body('category').isIn(['food', 'maintenance', 'electricity', 'cleanliness', 'security', 'other']).withMessage('Invalid category'),
-    body('title').notEmpty().withMessage('Title is required'),
-    body('description').notEmpty().withMessage('Description is required'),
-    body('priority').optional().isIn(['low', 'medium', 'high', 'urgent']).withMessage('Invalid priority')
-  ],
-  async (req, res) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty())
-        return res.status(400).json({ success: false, errors: errors.array() });
-
-      const { category, title, description, priority = 'medium' } = req.body;
-      const complaint = new Complaint({
-        user: req.user.id,
-        category,
-        title,
-        description,
-        priority
+      attendance.forEach(a => {
+        doc.text(`${a.date.toDateString()} - ${a.user?.name || 'N/A'} (${a.user?.batch || '-'}) | ${a.status} | In: ${a.checkIn || 'N/A'} Out: ${a.checkOut || 'N/A'}`);
       });
-      await complaint.save();
 
-      res.status(201).json({
-        success: true,
-        message: 'Complaint submitted successfully',
-        data: complaint
+      doc.end();
+    } else if (format === 'excel') {
+      const workbook = new ExcelJS.Workbook();
+      const sheet = workbook.addWorksheet('Attendance Report');
+
+      sheet.columns = [
+        { header: 'Date', key: 'date', width: 15 },
+        { header: 'Name', key: 'name', width: 20 },
+        { header: 'Batch', key: 'batch', width: 15 },
+        { header: 'Room No', key: 'room_no', width: 10 },
+        { header: 'Status', key: 'status', width: 15 },
+        { header: 'Check In', key: 'checkIn', width: 15 },
+        { header: 'Check Out', key: 'checkOut', width: 15 },
+      ];
+
+      attendance.forEach(a => {
+        sheet.addRow({
+          date: a.date.toDateString(),
+          name: a.user?.name,
+          batch: a.user?.batch,
+          room_no: a.user?.room_no,
+          status: a.status,
+          checkIn: a.checkIn || 'N/A',
+          checkOut: a.checkOut || 'N/A'
+        });
       });
-    } catch (error) {
-      console.error('Create complaint error:', error);
-      res.status(500).json({ success: false, message: 'Failed to submit complaint' });
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', 'attachment; filename="attendance-report.xlsx"');
+      await workbook.xlsx.write(res);
+      res.end();
+    } else {
+      res.json({ success: true, data: attendance });
     }
-  }
-);
-
-/**
- * @route PUT /complaints/:id/status
- * @desc Update complaint status (Admin only)
- */
-router.put(
-  '/:id/status',
-  authenticateToken,
-  requireAdmin,
-  [
-    body('status').isIn(['pending', 'in_progress', 'resolved', 'rejected']).withMessage('Invalid status'),
-    body('adminResponse').optional().isString()
-  ],
-  async (req, res) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty())
-        return res.status(400).json({ success: false, errors: errors.array() });
-
-      const { id } = req.params;
-      const { status, adminResponse } = req.body;
-
-      const complaint = await Complaint.findById(id);
-      if (!complaint)
-        return res.status(404).json({ success: false, message: 'Complaint not found' });
-
-      complaint.status = status;
-      if (adminResponse) complaint.adminResponse = adminResponse;
-      await complaint.save();
-
-      res.json({ success: true, message: 'Complaint status updated successfully' });
-    } catch (error) {
-      console.error('Update complaint status error:', error);
-      res.status(500).json({ success: false, message: 'Failed to update status' });
-    }
-  }
-);
-
-/**
- * @route GET /complaints/stats/overview
- * @desc Get complaint stats (Admin only)
- */
-router.get('/stats/overview', authenticateToken, requireAdmin, async (req, res) => {
-  try {
-    const { startDate, endDate } = req.query;
-    const dateFilter = {};
-    if (startDate || endDate) dateFilter.createdAt = {};
-    if (startDate) dateFilter.createdAt.$gte = new Date(startDate);
-    if (endDate) dateFilter.createdAt.$lte = new Date(endDate);
-
-    const total = await Complaint.countDocuments(dateFilter);
-    const statuses = await Complaint.aggregate([
-      { $match: dateFilter },
-      { $group: { _id: '$status', count: { $sum: 1 } } }
-    ]);
-    const categories = await Complaint.aggregate([
-      { $match: dateFilter },
-      { $group: { _id: '$category', count: { $sum: 1 } } },
-      { $sort: { count: -1 } }
-    ]);
-    const priorities = await Complaint.aggregate([
-      { $match: dateFilter },
-      { $group: { _id: '$priority', count: { $sum: 1 } } },
-      { $sort: { count: 1 } }
-    ]);
-
-    res.json({
-      success: true,
-      data: {
-        overview: { total },
-        byStatus: statuses,
-        byCategory: categories,
-        byPriority: priorities
-      }
-    });
-  } catch (error) {
-    console.error('Get complaint stats error:', error);
-    res.status(500).json({ success: false, message: 'Failed to fetch complaint statistics' });
+  } catch (err) {
+    console.error('Attendance Report Error:', err);
+    res.status(500).json({ success: false, message: 'Failed to generate attendance report' });
   }
 });
 
-/**
- * @route GET /complaints/recent/list
- * @desc Get recent complaints (Admin only)
- */
-router.get('/recent/list', authenticateToken, requireAdmin, async (req, res) => {
+// 💰 Fee / Payment Report
+router.get('/payments', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { limit = 5 } = req.query;
-    const complaints = await Complaint.find()
-      .populate('user', 'name email room_no batch')
-      .sort({ createdAt: -1 })
-      .limit(parseInt(limit));
+    const { startDate, endDate, status, format = 'json' } = req.query;
+    const filter = {};
+
+    if (status) filter.status = status;
+    if (startDate || endDate) filter.dueDate = {};
+    if (startDate) filter.dueDate.$gte = new Date(startDate);
+    if (endDate) filter.dueDate.$lte = new Date(endDate);
+
+    const payments = await Fee.find(filter)
+      .populate('user', 'name email batch room_no')
+      .sort({ dueDate: -1 });
+
+    if (format === 'pdf') {
+      const doc = new PDFDocument();
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', 'attachment; filename="payment-report.pdf"');
+      doc.pipe(res);
+
+      doc.fontSize(20).text('PAYMENT REPORT', { align: 'center' });
+      doc.moveDown();
+      doc.text(`Period: ${startDate || 'All'} - ${endDate || 'Now'}`);
+      doc.text(`Total: ${payments.length}`);
+      doc.moveDown();
+
+      payments.forEach(p => {
+        doc.text(`${p.user?.name || 'N/A'} | ₹${p.amount} | ${p.feeType} | ${p.status} | Due: ${p.dueDate?.toDateString()} | Paid: ${p.paidDate ? p.paidDate.toDateString() : 'N/A'}`);
+      });
+
+      doc.end();
+    } else {
+      res.json({ success: true, data: payments });
+    }
+  } catch (err) {
+    console.error('Payment Report Error:', err);
+    res.status(500).json({ success: false, message: 'Failed to generate payment report' });
+  }
+});
+
+// 🧾 Complaint Report
+router.get('/complaints', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { startDate, endDate, status, category, format = 'json' } = req.query;
+    const filter = {};
+
+    if (status) filter.status = status;
+    if (category) filter.category = category;
+    if (startDate || endDate) filter.createdAt = {};
+    if (startDate) filter.createdAt.$gte = new Date(startDate);
+    if (endDate) filter.createdAt.$lte = new Date(endDate);
+
+    const complaints = await Complaint.find(filter)
+      .populate('user', 'name email batch room_no')
+      .sort({ createdAt: -1 });
 
     res.json({ success: true, data: complaints });
-  } catch (error) {
-    console.error('Get recent complaints error:', error);
-    res.status(500).json({ success: false, message: 'Failed to fetch recent complaints' });
-  }
-});
-
-/**
- * @route DELETE /complaints/:id
- * @desc Delete a complaint (Admin only)
- */
-router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
-  try {
-    const complaint = await Complaint.findById(req.params.id);
-    if (!complaint)
-      return res.status(404).json({ success: false, message: 'Complaint not found' });
-
-    await complaint.deleteOne();
-    res.json({ success: true, message: 'Complaint deleted successfully' });
-  } catch (error) {
-    console.error('Delete complaint error:', error);
-    res.status(500).json({ success: false, message: 'Failed to delete complaint' });
+  } catch (err) {
+    console.error('Complaint Report Error:', err);
+    res.status(500).json({ success: false, message: 'Failed to generate complaint report' });
   }
 });
 
