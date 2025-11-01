@@ -153,4 +153,5 @@ router.get('/complaints', authenticateToken, requireAdmin, async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;
+
