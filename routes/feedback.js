@@ -1,88 +1,100 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const db = require('../config/database');
+const Feedback = require('../models/Feedback');
+const User = require('../models/User');
 const { authenticateToken, requireAnyRole } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Get feedback
+/**
+ * @route GET /api/feedback
+ * @desc Get all feedback with pagination and optional filtering by service type
+ * @access Admin & Student (any role)
+ */
 router.get('/', authenticateToken, requireAnyRole, async (req, res) => {
   try {
     const { serviceType, page = 1, limit = 10 } = req.query;
-    const offset = (page - 1) * limit;
+    const filter = {};
 
-    let query = `
-      SELECT f.*, u.name, u.email, u.room_no
-      FROM feedback f
-      JOIN users u ON f.user_id = u.id
-      WHERE 1=1
-    `;
-    let params = [];
+    if (serviceType) filter.serviceType = serviceType;
 
-    if (serviceType) {
-      query += ' AND f.service_type = ?';
-      params.push(serviceType);
-    }
+    const feedbacks = await Feedback.find(filter)
+      .populate('user', 'name email roomNo')
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(parseInt(limit));
 
-    query += ' ORDER BY f.created_at DESC LIMIT ? OFFSET ?';
-    params.push(parseInt(limit), offset);
-
-    const [feedback] = await db.promise().execute(query, params);
+    const total = await Feedback.countDocuments(filter);
 
     res.json({
       success: true,
-      data: feedback
-    });
-
-  } catch (error) {
-    console.error('Get feedback error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch feedback'
-    });
-  }
-});
-
-// Submit feedback
-router.post('/', authenticateToken, requireAnyRole, [
-  body('serviceType').isIn(['food', 'cleaning', 'security', 'maintenance', 'overall']).withMessage('Invalid service type'),
-  body('rating').isInt({ min: 1, max: 5 }).withMessage('Rating must be between 1 and 5')
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors: errors.array()
-      });
-    }
-
-    const { serviceType, rating, comment } = req.body;
-    const userId = req.user.id;
-
-    const [result] = await db.promise().execute(
-      'INSERT INTO feedback (user_id, service_type, rating, comment) VALUES (?, ?, ?, ?)',
-      [userId, serviceType, rating, comment]
-    );
-
-    res.status(201).json({
-      success: true,
-      message: 'Feedback submitted successfully',
       data: {
-        id: result.insertId,
-        serviceType,
-        rating
+        feedbacks,
+        pagination: {
+          current: parseInt(page),
+          pages: Math.ceil(total / limit),
+          total
+        }
       }
     });
-
   } catch (error) {
-    console.error('Submit feedback error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to submit feedback'
-    });
+    console.error('Get feedback error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch feedback' });
   }
 });
+
+/**
+ * @route POST /api/feedback
+ * @desc Submit feedback for a service
+ * @access Student/Admin (any authenticated role)
+ */
+router.post(
+  '/',
+  authenticateToken,
+  requireAnyRole,
+  [
+    body('serviceType')
+      .isIn(['food', 'cleaning', 'security', 'maintenance', 'overall'])
+      .withMessage('Invalid service type'),
+    body('rating')
+      .isInt({ min: 1, max: 5 })
+      .withMessage('Rating must be between 1 and 5'),
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Validation failed',
+          errors: errors.array(),
+        });
+      }
+
+      const { serviceType, rating, comment } = req.body;
+
+      const feedback = new Feedback({
+        user: req.user.id,
+        serviceType,
+        rating,
+        comment,
+      });
+
+      await feedback.save();
+
+      res.status(201).json({
+        success: true,
+        message: 'Feedback submitted successfully',
+        data: feedback,
+      });
+    } catch (error) {
+      console.error('Submit feedback error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to submit feedback',
+      });
+    }
+  }
+);
 
 module.exports = router;
