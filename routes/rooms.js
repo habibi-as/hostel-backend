@@ -535,4 +535,5 @@ router.post('/:roomId/unassign', authenticateToken, requireAdmin, [
   }
 });
 
-module.exports = router;
+export default router;
+
