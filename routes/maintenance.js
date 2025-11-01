@@ -119,5 +119,5 @@ router.put('/:id', authenticateToken, requireAdmin, [
     });
   }
 });
+export default router;
 
-module.exports = router;
