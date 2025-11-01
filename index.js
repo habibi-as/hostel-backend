@@ -1,4 +1,3 @@
-// index.js
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
@@ -32,7 +31,7 @@ const reportRoutes = require("./routes/reports");
 const chatbotRoutes = require("./routes/chatbot");
 
 // ✅ Import the attendance auto-mark cron
-const { markAbsentIfNoScan } = require("./controllers/attendanceCron");
+const { markAbsentIfNoScan } = require("./cron/attendanceCron");  // <-- fixed path
 
 const app = express();
 const server = http.createServer(app);
@@ -102,7 +101,6 @@ app.get("/api/test-cors", (req, res) => {
 // ===============================
 // ✅ ROUTE CONFIGURATION
 // ===============================
-
 app.use("/api/auth", authRoutes);
 app.use("/api/users", authenticateToken, userRoutes);
 app.use("/api/rooms", authenticateToken, roomRoutes);
