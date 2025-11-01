@@ -1,88 +1,115 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const db = require('../config/database');
+const Event = require('../models/Event');
+const User = require('../models/User');
 const { authenticateToken, requireAdmin, requireAnyRole } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Get events
+/**
+ * @route GET /api/events
+ * @desc Get all active events (filtered & paginated)
+ * @access Admin & Student
+ */
 router.get('/', authenticateToken, requireAnyRole, async (req, res) => {
   try {
     const { eventType, page = 1, limit = 10 } = req.query;
-    const offset = (page - 1) * limit;
+    const filter = { isActive: true };
 
-    let query = `
-      SELECT e.*, u.name as created_by_name
-      FROM events e
-      JOIN users u ON e.created_by = u.id
-      WHERE e.is_active = TRUE
-    `;
-    let params = [];
+    if (eventType) filter.eventType = eventType;
 
-    if (eventType) {
-      query += ' AND e.event_type = ?';
-      params.push(eventType);
-    }
+    const events = await Event.find(filter)
+      .populate('createdBy', 'name email')
+      .sort({ eventDate: 1 })
+      .skip((page - 1) * limit)
+      .limit(parseInt(limit));
 
-    query += ' ORDER BY e.event_date ASC LIMIT ? OFFSET ?';
-    params.push(parseInt(limit), offset);
-
-    const [events] = await db.promise().execute(query, params);
+    const total = await Event.countDocuments(filter);
 
     res.json({
       success: true,
-      data: events
+      data: {
+        events,
+        pagination: {
+          current: parseInt(page),
+          pages: Math.ceil(total / limit),
+          total
+        }
+      }
     });
-
   } catch (error) {
     console.error('Get events error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch events'
-    });
+    res.status(500).json({ success: false, message: 'Failed to fetch events' });
   }
 });
 
-// Create event (Admin only)
-router.post('/', authenticateToken, requireAdmin, [
-  body('title').notEmpty().withMessage('Title is required'),
-  body('eventDate').isISO8601().withMessage('Valid event date is required'),
-  body('eventType').isIn(['academic', 'cultural', 'sports', 'social', 'maintenance']).withMessage('Invalid event type')
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors: errors.array()
+/**
+ * @route POST /api/events
+ * @desc Create new event (Admin only)
+ * @access Admin
+ */
+router.post(
+  '/',
+  authenticateToken,
+  requireAdmin,
+  [
+    body('title').notEmpty().withMessage('Title is required'),
+    body('eventDate').isISO8601().withMessage('Valid event date is required'),
+    body('eventType')
+      .isIn(['academic', 'cultural', 'sports', 'social', 'maintenance'])
+      .withMessage('Invalid event type'),
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty())
+        return res.status(400).json({ success: false, errors: errors.array() });
+
+      const { title, description, eventDate, eventTime, location, eventType } = req.body;
+
+      const event = new Event({
+        title,
+        description,
+        eventDate,
+        eventTime,
+        location,
+        eventType,
+        createdBy: req.user.id
       });
+
+      await event.save();
+
+      res.status(201).json({
+        success: true,
+        message: 'Event created successfully',
+        data: event
+      });
+    } catch (error) {
+      console.error('Create event error:', error);
+      res.status(500).json({ success: false, message: 'Failed to create event' });
+    }
+  }
+);
+
+/**
+ * @route DELETE /api/events/:id
+ * @desc Soft delete event (Admin only)
+ * @access Admin
+ */
+router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const event = await Event.findById(req.params.id);
+    if (!event) {
+      return res.status(404).json({ success: false, message: 'Event not found' });
     }
 
-    const { title, description, eventDate, eventTime, location, eventType } = req.body;
-    const createdBy = req.user.id;
+    event.isActive = false;
+    await event.save();
 
-    const [result] = await db.promise().execute(
-      'INSERT INTO events (title, description, event_date, event_time, location, event_type, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [title, description, eventDate, eventTime, location, eventType, createdBy]
-    );
-
-    res.status(201).json({
-      success: true,
-      message: 'Event created successfully',
-      data: {
-        id: result.insertId,
-        title,
-        eventDate
-      }
-    });
-
+    res.json({ success: true, message: 'Event deleted (soft delete) successfully' });
   } catch (error) {
-    console.error('Create event error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to create event'
-    });
+    console.error('Delete event error:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete event' });
   }
 });
 
