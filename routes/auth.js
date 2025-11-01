@@ -1,119 +1,165 @@
-const express = require('express');
+import express from "express";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import { authenticateToken, requireAdmin, requireStudent } from "../middleware/auth.js";
+import User from "../models/User.js";
+
 const router = express.Router();
-const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs');
-const User = require('../models/user');
-const { authenticateToken, requireAdmin, requireStudent } = require('../middleware/auth');
-require('dotenv').config();
 
-// 🧱 Register (for both admin and student)
-router.post('/register', async (req, res) => {
+// Helper function to create JWT
+const createToken = (user) => {
+  return jwt.sign(
+    { id: user._id, role: user.role },
+    process.env.JWT_SECRET,
+    { expiresIn: process.env.JWT_EXPIRE || "7d" }
+  );
+};
+
+// -------------------------
+// Register (Admin / Student)
+// -------------------------
+router.post("/register", async (req, res) => {
   try {
-    const { name, email, password, phone, batch, role } = req.body;
+    const { name, email, password, role } = req.body;
 
-    if (!name || !email || !password || !role) {
-      return res.status(400).json({ success: false, message: 'All required fields must be filled' });
-    }
+    if (!name || !email || !password || !role)
+      return res.status(400).json({ message: "All fields are required" });
 
-    const existingUser = await User.findOne({ email });
-    if (existingUser)
-      return res.status(400).json({ success: false, message: 'User already exists' });
+    if (!["admin", "student"].includes(role))
+      return res.status(400).json({ message: "Invalid role" });
 
-    // Create user
+    const existing = await User.findOne({ email });
+    if (existing) return res.status(400).json({ message: "Email already registered" });
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
     const newUser = new User({
       name,
       email,
-      password,
-      phone,
-      batch: role === 'student' ? batch : null,
-      role
+      password: hashedPassword,
+      role,
     });
 
     await newUser.save();
 
+    const token = createToken(newUser);
     res.status(201).json({
-      success: true,
-      message: `${role.charAt(0).toUpperCase() + role.slice(1)} registered successfully!`,
+      token,
       user: {
         id: newUser._id,
         name: newUser.name,
         email: newUser.email,
-        role: newUser.role
-      }
+        role: newUser.role,
+      },
+      message: "Registration successful",
     });
   } catch (err) {
-    console.error('❌ Registration error:', err);
-    res.status(500).json({ success: false, message: 'Server error during registration' });
+    console.error("Register error:", err);
+    res.status(500).json({ message: "Server error" });
   }
 });
 
-// 🔑 Login (works for both admin & student)
-router.post('/login', async (req, res) => {
+// --------------
+// Login Endpoint
+// --------------
+router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
+    if (!email || !password)
+      return res.status(400).json({ message: "All fields are required" });
 
     const user = await User.findOne({ email });
-    if (!user)
-      return res.status(400).json({ success: false, message: 'Invalid credentials' });
+    if (!user) return res.status(404).json({ message: "User not found" });
 
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch)
-      return res.status(400).json({ success: false, message: 'Invalid credentials' });
+    if (!isMatch) return res.status(401).json({ message: "Invalid credentials" });
 
-    // Generate JWT token
-    const token = jwt.sign(
-      { id: user._id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: '7d' }
-    );
+    const token = createToken(user);
 
-    res.status(200).json({
-      success: true,
-      message: `${user.role} login successful`,
+    res.json({
       token,
       user: {
         id: user._id,
         name: user.name,
         email: user.email,
-        role: user.role
-      }
+        role: user.role,
+      },
+      message: "Login successful",
     });
   } catch (err) {
-    console.error('❌ Login error:', err);
-    res.status(500).json({ success: false, message: 'Server error during login' });
+    console.error("Login error:", err);
+    res.status(500).json({ message: "Server error" });
   }
 });
 
-// 👤 Get user profile (auth required)
-router.get('/profile', authenticateToken, async (req, res) => {
+// ------------------
+// Get User Profile
+// ------------------
+router.get("/profile", authenticateToken, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select('-password');
-    if (!user)
-      return res.status(404).json({ success: false, message: 'User not found' });
-
-    res.json({ success: true, user });
+    const user = await User.findById(req.user.id).select("-password");
+    if (!user) return res.status(404).json({ message: "User not found" });
+    res.json(user);
   } catch (err) {
-    console.error('❌ Profile fetch error:', err);
-    res.status(500).json({ success: false, message: 'Server error fetching profile' });
+    console.error("Profile error:", err);
+    res.status(500).json({ message: "Server error" });
   }
 });
 
-// 🧩 Admin-only route example
-router.get('/admin/dashboard', authenticateToken, requireAdmin, (req, res) => {
-  res.json({
-    success: true,
-    message: 'Welcome Admin! This route is protected and only for admins.',
-    user: req.user
-  });
+// ------------------
+// Update User Profile
+// ------------------
+router.put("/profile", authenticateToken, async (req, res) => {
+  try {
+    const { name, email } = req.body;
+    const updated = await User.findByIdAndUpdate(
+      req.user.id,
+      { name, email },
+      { new: true }
+    ).select("-password");
+
+    res.json({ message: "Profile updated", user: updated });
+  } catch (err) {
+    console.error("Update profile error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
 });
 
-// 🎓 Student-only route example
-router.get('/student/dashboard', authenticateToken, requireStudent, (req, res) => {
-  res.json({
-    success: true,
-    message: 'Welcome Student! This route is protected and only for students.',
-    user: req.user
-  });
+// ------------------
+// Change Password
+// ------------------
+router.put("/change-password", authenticateToken, async (req, res) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const isMatch = await bcrypt.compare(oldPassword, user.password);
+    if (!isMatch) return res.status(401).json({ message: "Old password incorrect" });
+
+    user.password = await bcrypt.hash(newPassword, 10);
+    await user.save();
+
+    res.json({ message: "Password changed successfully" });
+  } catch (err) {
+    console.error("Change password error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
 });
 
-module.exports = router;
+// ------------------
+// Admin-only route (test)
+// ------------------
+router.get("/admin/test", authenticateToken, requireAdmin, (req, res) => {
+  res.json({ message: "Welcome Admin, this route is protected" });
+});
+
+// ------------------
+// Student-only route (test)
+// ------------------
+router.get("/student/test", authenticateToken, requireStudent, (req, res) => {
+  res.json({ message: "Welcome Student, this route is protected" });
+});
+
+export default router;
