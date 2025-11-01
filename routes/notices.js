@@ -1,55 +1,25 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const db = require('../config/database');
+const Notice = require('../models/Notice');
 const { authenticateToken, requireAdmin, requireAnyRole } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Get notices
+// 🟢 Get notices (with filters + pagination)
 router.get('/', authenticateToken, requireAnyRole, async (req, res) => {
   try {
     const { category, priority, page = 1, limit = 10 } = req.query;
-    const offset = (page - 1) * limit;
+    const query = { isActive: true };
 
-    let query = `
-      SELECT n.*, u.name as created_by_name
-      FROM notices n
-      JOIN users u ON n.created_by = u.id
-      WHERE n.is_active = TRUE
-    `;
-    let params = [];
+    if (category) query.category = category;
+    if (priority) query.priority = priority;
 
-    if (category) {
-      query += ' AND n.category = ?';
-      params.push(category);
-    }
-
-    if (priority) {
-      query += ' AND n.priority = ?';
-      params.push(priority);
-    }
-
-    query += ' ORDER BY n.created_at DESC LIMIT ? OFFSET ?';
-    params.push(parseInt(limit), offset);
-
-    const [notices] = await db.promise().execute(query, params);
-
-    // Get total count
-    let countQuery = 'SELECT COUNT(*) as total FROM notices WHERE is_active = TRUE';
-    let countParams = [];
-
-    if (category) {
-      countQuery += ' AND category = ?';
-      countParams.push(category);
-    }
-
-    if (priority) {
-      countQuery += ' AND priority = ?';
-      countParams.push(priority);
-    }
-
-    const [countResult] = await db.promise().execute(countQuery, countParams);
-    const total = countResult[0].total;
+    const total = await Notice.countDocuments(query);
+    const notices = await Notice.find(query)
+      .populate('createdBy', 'name email')
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(parseInt(limit));
 
     res.json({
       success: true,
@@ -72,19 +42,12 @@ router.get('/', authenticateToken, requireAnyRole, async (req, res) => {
   }
 });
 
-// Get notice by ID
+// 🟢 Get single notice by ID
 router.get('/:id', authenticateToken, requireAnyRole, async (req, res) => {
   try {
-    const { id } = req.params;
+    const notice = await Notice.findById(req.params.id).populate('createdBy', 'name email');
 
-    const [notices] = await db.promise().execute(`
-      SELECT n.*, u.name as created_by_name
-      FROM notices n
-      JOIN users u ON n.created_by = u.id
-      WHERE n.id = ?
-    `, [id]);
-
-    if (notices.length === 0) {
+    if (!notice) {
       return res.status(404).json({
         success: false,
         message: 'Notice not found'
@@ -93,7 +56,7 @@ router.get('/:id', authenticateToken, requireAnyRole, async (req, res) => {
 
     res.json({
       success: true,
-      data: notices[0]
+      data: notice
     });
 
   } catch (error) {
@@ -105,41 +68,28 @@ router.get('/:id', authenticateToken, requireAnyRole, async (req, res) => {
   }
 });
 
-// Create notice (Admin only)
+// 🟢 Create notice (Admin only)
 router.post('/', authenticateToken, requireAdmin, [
-  body('title').notEmpty().withMessage('Title is required'),
-  body('content').notEmpty().withMessage('Content is required'),
-  body('category').isIn(['general', 'maintenance', 'event', 'emergency', 'academic']).withMessage('Invalid category'),
-  body('priority').isIn(['normal', 'important', 'urgent']).withMessage('Invalid priority')
+  body('title').notEmpty(),
+  body('content').notEmpty(),
+  body('category').isIn(['general', 'maintenance', 'event', 'emergency', 'academic']),
+  body('priority').isIn(['normal', 'important', 'urgent'])
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors: errors.array()
-      });
+      return res.status(400).json({ success: false, errors: errors.array() });
     }
 
     const { title, content, category, priority } = req.body;
     const createdBy = req.user.id;
 
-    // Create notice
-    const [result] = await db.promise().execute(
-      'INSERT INTO notices (title, content, category, priority, created_by) VALUES (?, ?, ?, ?, ?)',
-      [title, content, category, priority, createdBy]
-    );
+    const notice = await Notice.create({ title, content, category, priority, createdBy });
 
     res.status(201).json({
       success: true,
       message: 'Notice created successfully',
-      data: {
-        id: result.insertId,
-        title,
-        category,
-        priority
-      }
+      data: notice
     });
 
   } catch (error) {
@@ -151,80 +101,33 @@ router.post('/', authenticateToken, requireAdmin, [
   }
 });
 
-// Update notice (Admin only)
+// 🟢 Update notice (Admin only)
 router.put('/:id', authenticateToken, requireAdmin, [
-  body('title').optional().notEmpty().withMessage('Title cannot be empty'),
-  body('content').optional().notEmpty().withMessage('Content cannot be empty'),
-  body('category').optional().isIn(['general', 'maintenance', 'event', 'emergency', 'academic']).withMessage('Invalid category'),
-  body('priority').optional().isIn(['normal', 'important', 'urgent']).withMessage('Invalid priority')
+  body('title').optional().notEmpty(),
+  body('content').optional().notEmpty(),
+  body('category').optional().isIn(['general', 'maintenance', 'event', 'emergency', 'academic']),
+  body('priority').optional().isIn(['normal', 'important', 'urgent'])
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors: errors.array()
-      });
+      return res.status(400).json({ success: false, errors: errors.array() });
     }
 
-    const { id } = req.params;
-    const { title, content, category, priority, is_active } = req.body;
+    const updateData = req.body;
+    const updated = await Notice.findByIdAndUpdate(req.params.id, updateData, { new: true });
 
-    // Check if notice exists
-    const [notices] = await db.promise().execute(
-      'SELECT id FROM notices WHERE id = ?',
-      [id]
-    );
-
-    if (notices.length === 0) {
+    if (!updated) {
       return res.status(404).json({
         success: false,
         message: 'Notice not found'
       });
     }
 
-    let updateFields = [];
-    let values = [];
-
-    if (title) {
-      updateFields.push('title = ?');
-      values.push(title);
-    }
-    if (content) {
-      updateFields.push('content = ?');
-      values.push(content);
-    }
-    if (category) {
-      updateFields.push('category = ?');
-      values.push(category);
-    }
-    if (priority) {
-      updateFields.push('priority = ?');
-      values.push(priority);
-    }
-    if (is_active !== undefined) {
-      updateFields.push('is_active = ?');
-      values.push(is_active);
-    }
-
-    if (updateFields.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'No fields to update'
-      });
-    }
-
-    values.push(id);
-
-    await db.promise().execute(
-      `UPDATE notices SET ${updateFields.join(', ')} WHERE id = ?`,
-      values
-    );
-
     res.json({
       success: true,
-      message: 'Notice updated successfully'
+      message: 'Notice updated successfully',
+      data: updated
     });
 
   } catch (error) {
@@ -236,26 +139,17 @@ router.put('/:id', authenticateToken, requireAdmin, [
   }
 });
 
-// Delete notice (Admin only)
+// 🟢 Delete notice (Admin only)
 router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { id } = req.params;
+    const deleted = await Notice.findByIdAndDelete(req.params.id);
 
-    // Check if notice exists
-    const [notices] = await db.promise().execute(
-      'SELECT id FROM notices WHERE id = ?',
-      [id]
-    );
-
-    if (notices.length === 0) {
+    if (!deleted) {
       return res.status(404).json({
         success: false,
         message: 'Notice not found'
       });
     }
-
-    // Delete notice
-    await db.promise().execute('DELETE FROM notices WHERE id = ?', [id]);
 
     res.json({
       success: true,
@@ -271,19 +165,14 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
   }
 });
 
-// Get recent notices
+// 🟢 Recent notices (limit)
 router.get('/recent/list', authenticateToken, requireAnyRole, async (req, res) => {
   try {
     const { limit = 5 } = req.query;
-
-    const [notices] = await db.promise().execute(`
-      SELECT n.*, u.name as created_by_name
-      FROM notices n
-      JOIN users u ON n.created_by = u.id
-      WHERE n.is_active = TRUE
-      ORDER BY n.created_at DESC
-      LIMIT ?
-    `, [parseInt(limit)]);
+    const notices = await Notice.find({ isActive: true })
+      .populate('createdBy', 'name email')
+      .sort({ createdAt: -1 })
+      .limit(parseInt(limit));
 
     res.json({
       success: true,
@@ -299,28 +188,20 @@ router.get('/recent/list', authenticateToken, requireAnyRole, async (req, res) =
   }
 });
 
-// Get notices by category
+// 🟢 Get notices by category
 router.get('/category/:category', authenticateToken, requireAnyRole, async (req, res) => {
   try {
     const { category } = req.params;
     const { page = 1, limit = 10 } = req.query;
-    const offset = (page - 1) * limit;
 
-    const [notices] = await db.promise().execute(`
-      SELECT n.*, u.name as created_by_name
-      FROM notices n
-      JOIN users u ON n.created_by = u.id
-      WHERE n.category = ? AND n.is_active = TRUE
-      ORDER BY n.created_at DESC
-      LIMIT ? OFFSET ?
-    `, [category, parseInt(limit), offset]);
+    const query = { category, isActive: true };
+    const total = await Notice.countDocuments(query);
 
-    // Get total count
-    const [countResult] = await db.promise().execute(
-      'SELECT COUNT(*) as total FROM notices WHERE category = ? AND is_active = TRUE',
-      [category]
-    );
-    const total = countResult[0].total;
+    const notices = await Notice.find(query)
+      .populate('createdBy', 'name email')
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(parseInt(limit));
 
     res.json({
       success: true,
