@@ -2,7 +2,7 @@ const express = require("express");
 const { body, validationResult } = require("express-validator");
 const { authenticateToken, requireAdmin, requireAnyRole } = require("../middleware/auth");
 const LaundryRequest = require("../models/LaundryRequest");
-const User = require("../models/User");
+const User = require("../models/user");
 
 const router = express.Router();
 
