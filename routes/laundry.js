@@ -1,7 +1,7 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const db = require('../config/database');
 const { authenticateToken, requireAdmin, requireAnyRole } = require('../middleware/auth');
+const LaundryRequest = require('../models/LaundryRequest');
 
 const router = express.Router();
 
@@ -9,139 +9,149 @@ const router = express.Router();
 router.get('/', authenticateToken, requireAnyRole, async (req, res) => {
   try {
     const { status, page = 1, limit = 10 } = req.query;
-    const offset = (page - 1) * limit;
+    const skip = (page - 1) * limit;
     const currentUser = req.user;
 
-    let query = `
-      SELECT lr.*, u.name, u.email, u.room_no
-      FROM laundry_requests lr
-      JOIN users u ON lr.user_id = u.id
-      WHERE 1=1
-    `;
-    let params = [];
+    const filter = {};
+    if (status) filter.status = status;
 
     // Students can only view their own requests
     if (currentUser.role === 'student') {
-      query += ' AND lr.user_id = ?';
-      params.push(currentUser.id);
+      filter.user = currentUser.id;
     }
 
-    if (status) {
-      query += ' AND lr.status = ?';
-      params.push(status);
-    }
+    const requests = await LaundryRequest.find(filter)
+      .populate('user', 'name email roomNo')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
 
-    query += ' ORDER BY lr.created_at DESC LIMIT ? OFFSET ?';
-    params.push(parseInt(limit), offset);
-
-    const [requests] = await db.promise().execute(query, params);
+    const total = await LaundryRequest.countDocuments(filter);
 
     res.json({
       success: true,
-      data: requests
+      data: requests,
+      pagination: {
+        current: parseInt(page),
+        totalPages: Math.ceil(total / limit),
+        total,
+      },
     });
-
   } catch (error) {
     console.error('Get laundry requests error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch laundry requests'
+      message: 'Failed to fetch laundry requests',
     });
   }
 });
 
 // Create laundry request
-router.post('/', authenticateToken, requireAnyRole, [
-  body('requestType').isIn(['wash', 'iron', 'dry_clean']).withMessage('Invalid request type'),
-  body('itemsCount').isInt({ min: 1 }).withMessage('Items count must be at least 1'),
-  body('pickupDate').isISO8601().withMessage('Valid pickup date is required')
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
+router.post(
+  '/',
+  authenticateToken,
+  requireAnyRole,
+  [
+    body('requestType')
+      .isIn(['wash', 'iron', 'dry_clean'])
+      .withMessage('Invalid request type'),
+    body('itemsCount')
+      .isInt({ min: 1 })
+      .withMessage('Items count must be at least 1'),
+    body('pickupDate').isISO8601().withMessage('Valid pickup date is required'),
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Validation failed',
+          errors: errors.array(),
+        });
+      }
+
+      const { requestType, itemsCount, pickupDate } = req.body;
+      const userId = req.user.id;
+
+      const newRequest = new LaundryRequest({
+        user: userId,
+        requestType,
+        itemsCount,
+        pickupDate,
+      });
+
+      await newRequest.save();
+
+      res.status(201).json({
+        success: true,
+        message: 'Laundry request submitted successfully',
+        data: newRequest,
+      });
+    } catch (error) {
+      console.error('Create laundry request error:', error);
+      res.status(500).json({
         success: false,
-        message: 'Validation failed',
-        errors: errors.array()
+        message: 'Failed to submit laundry request',
       });
     }
-
-    const { requestType, itemsCount, pickupDate } = req.body;
-    const userId = req.user.id;
-
-    const [result] = await db.promise().execute(
-      'INSERT INTO laundry_requests (user_id, request_type, items_count, pickup_date) VALUES (?, ?, ?, ?)',
-      [userId, requestType, itemsCount, pickupDate]
-    );
-
-    res.status(201).json({
-      success: true,
-      message: 'Laundry request submitted successfully',
-      data: {
-        id: result.insertId,
-        requestType,
-        status: 'pending'
-      }
-    });
-
-  } catch (error) {
-    console.error('Create laundry request error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to submit laundry request'
-    });
   }
-});
+);
 
 // Update laundry request status (Admin only)
-router.put('/:id/status', authenticateToken, requireAdmin, [
-  body('status').isIn(['pending', 'picked_up', 'processing', 'ready', 'delivered']).withMessage('Invalid status')
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
+router.put(
+  '/:id/status',
+  authenticateToken,
+  requireAdmin,
+  [
+    body('status')
+      .isIn(['pending', 'picked_up', 'processing', 'ready', 'delivered'])
+      .withMessage('Invalid status'),
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Validation failed',
+          errors: errors.array(),
+        });
+      }
+
+      const { id } = req.params;
+      const { status, totalAmount, deliveryDate } = req.body;
+
+      const updateData = { status };
+      if (totalAmount !== undefined) updateData.totalAmount = totalAmount;
+      if (deliveryDate && status === 'delivered') updateData.deliveryDate = deliveryDate;
+
+      const updatedRequest = await LaundryRequest.findByIdAndUpdate(
+        id,
+        updateData,
+        { new: true }
+      );
+
+      if (!updatedRequest) {
+        return res.status(404).json({
+          success: false,
+          message: 'Laundry request not found',
+        });
+      }
+
+      res.json({
+        success: true,
+        message: 'Laundry request status updated successfully',
+        data: updatedRequest,
+      });
+    } catch (error) {
+      console.error('Update laundry request error:', error);
+      res.status(500).json({
         success: false,
-        message: 'Validation failed',
-        errors: errors.array()
+        message: 'Failed to update laundry request',
       });
     }
-
-    const { id } = req.params;
-    const { status, totalAmount, deliveryDate } = req.body;
-
-    let updateFields = ['status = ?'];
-    let values = [status];
-
-    if (totalAmount) {
-      updateFields.push('total_amount = ?');
-      values.push(totalAmount);
-    }
-
-    if (status === 'delivered' && deliveryDate) {
-      updateFields.push('delivery_date = ?');
-      values.push(deliveryDate);
-    }
-
-    values.push(id);
-
-    await db.promise().execute(
-      `UPDATE laundry_requests SET ${updateFields.join(', ')} WHERE id = ?`,
-      values
-    );
-
-    res.json({
-      success: true,
-      message: 'Laundry request status updated successfully'
-    });
-
-  } catch (error) {
-    console.error('Update laundry request error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update laundry request'
-    });
   }
-});
+);
 
 module.exports = router;
