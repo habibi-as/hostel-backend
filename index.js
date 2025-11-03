@@ -1,42 +1,45 @@
-const express = require("express");
-const cors = require("cors");
-const helmet = require("helmet");
-const rateLimit = require("express-rate-limit");
-const http = require("http");
-require("dotenv").config();
-const mongoose = require("mongoose");
-const cron = require("node-cron");
+import express from "express";
+import cors from "cors";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
+import http from "http";
+import dotenv from "dotenv";
+import mongoose from "mongoose";
+import cron from "node-cron";
 
 // ✅ Middleware for auth & roles
-const { authenticateToken, requireAdmin, requireStudent } = require("./middleware/auth");
+import { authenticateToken, requireAdmin, requireStudent } from "./middleware/auth.js";
 
 // ✅ Import all route files
-const authRoutes = require("./routes/auth");
-const userRoutes = require("./routes/users");
-const roomRoutes = require("./routes/rooms");
-const attendanceRoutes = require("./routes/attendance");
-const feeRoutes = require("./routes/fees");
-const complaintRoutes = require("./routes/complaints");
-const noticeRoutes = require("./routes/notices");
-const lostFoundRoutes = require("./routes/lostFound");
-const chatRoutes = require("./routes/chat");
-const announcementRoutes = require("./routes/announcements");
-const foodMenuRoutes = require("./routes/foodMenu");
-const laundryRoutes = require("./routes/laundry");
-const visitorRoutes = require("./routes/visitors");
-const maintenanceRoutes = require("./routes/maintenance");
-const eventRoutes = require("./routes/events");
-const feedbackRoutes = require("./routes/feedback");
-const reportRoutes = require("./routes/reports");
-const chatbotRoutes = require("./routes/chatbot");
+import authRoutes from "./routes/auth.js";
+import userRoutes from "./routes/users.js";
+import roomRoutes from "./routes/rooms.js";
+import attendanceRoutes from "./routes/attendance.js";
+import feeRoutes from "./routes/fees.js";
+import complaintRoutes from "./routes/complaints.js";
+import noticeRoutes from "./routes/notices.js";
+import lostFoundRoutes from "./routes/lostFound.js";
+import chatRoutes from "./routes/chat.js";
+import announcementRoutes from "./routes/announcements.js";
+import foodMenuRoutes from "./routes/foodMenu.js";
+import laundryRoutes from "./routes/laundry.js";
+import visitorRoutes from "./routes/visitors.js";
+import maintenanceRoutes from "./routes/maintenance.js";
+import eventRoutes from "./routes/events.js";
+import feedbackRoutes from "./routes/feedback.js";
+import reportRoutes from "./routes/reports.js";
+import chatbotRoutes from "./routes/chatbot.js";
 
 // ✅ Import the attendance auto-mark cron
-const { markAbsentIfNoScan } = require("./cron/attendanceCron");  // <-- fixed path
+import { markAbsentIfNoScan } from "./cron/attendanceCron.js";
+
+// Load environment variables
+dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
 
-// ✅ Allowed frontend URLs (Netlify + local dev)
+// ✅ Allowed frontend URLs
 const allowedOrigins = [
   "https://asuraxhostel.netlify.app",
   "http://localhost:3000",
@@ -137,7 +140,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ success: false, message: "Internal Server Error" });
 });
 
-// ✅ Daily Cron Job — mark absent if not scanned by midnight
+// ✅ Daily Cron Job
 cron.schedule("0 0 * * *", async () => {
   console.log("🕛 Running daily attendance check...");
   await markAbsentIfNoScan();
@@ -148,4 +151,5 @@ cron.schedule("0 0 * * *", async () => {
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
 
-module.exports = app;
+// ✅ Export (for testing or compatibility)
+export default app;
