@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import { body, validationResult } from "express-validator";
 import { authenticateToken, requireAdmin, requireAnyRole } from "../middleware/auth.js";
 import upload from "../middleware/upload.js";
-import User from "../models/Users.js";
+import User from "../models/users.js";
 import Room from "../models/Room.js";
 import Complaint from "../models/Complaint.js";
 import Fee from "../models/Fee.js";
