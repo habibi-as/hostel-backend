@@ -1,10 +1,11 @@
+// routes/rooms.js
 import express from "express";
+import { body, validationResult } from "express-validator";
 import Room from "../models/Room.js";
 import { authenticateToken, requireAdmin, requireAnyRole } from "../middleware/auth.js";
-
+import db from "../config/database.js"; // ✅ You must ensure this exists or remove if not used
 
 const router = express.Router();
-
 
 // Get all rooms
 router.get('/', authenticateToken, requireAnyRole, async (req, res) => {
@@ -154,7 +155,6 @@ router.post('/', authenticateToken, requireAdmin, [
 
     const { room_no, capacity, type, floor } = req.body;
 
-    // Check if room already exists
     const [existingRoom] = await db.promise().execute(
       'SELECT id FROM rooms WHERE room_no = ?',
       [room_no]
@@ -167,7 +167,6 @@ router.post('/', authenticateToken, requireAdmin, [
       });
     }
 
-    // Create room
     const [result] = await db.promise().execute(
       'INSERT INTO rooms (room_no, capacity, type, floor) VALUES (?, ?, ?, ?)',
       [room_no, capacity, type, floor]
@@ -212,7 +211,6 @@ router.put('/:id', authenticateToken, requireAdmin, [
     const { id } = req.params;
     const { capacity, type, floor, is_active } = req.body;
 
-    // Check if room exists
     const [existingRoom] = await db.promise().execute(
       'SELECT * FROM rooms WHERE id = ?',
       [id]
@@ -227,7 +225,6 @@ router.put('/:id', authenticateToken, requireAdmin, [
 
     const currentRoom = existingRoom[0];
 
-    // Check if new capacity is less than current occupancy
     if (capacity && capacity < currentRoom.occupied) {
       return res.status(400).json({
         success: false,
@@ -323,6 +320,4 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
   }
 });
 
-// ✅ Export router
 export default router;
-
