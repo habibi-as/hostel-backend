@@ -1,6 +1,7 @@
 import express from "express";
 import Room from "../models/Room.js";
-import { authenticateToken, requireAdmin } from "../middleware/auth.js";
+import { authenticateToken, requireAdmin, requireAnyRole } from "../middleware/auth.js";
+
 
 const router = express.Router();
 
