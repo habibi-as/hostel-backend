@@ -75,4 +75,5 @@ router.put('/:id', authenticateToken, requireAdmin, [
   }
 });
 
-module.exports = router;
+export default router;
+
