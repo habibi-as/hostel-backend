@@ -1,10 +1,9 @@
-// routes/roomRoutes.js
-const express = require('express');
-const { body, validationResult } = require('express-validator');
-const db = require('../config/database');
-const { authenticateToken, requireAdmin, requireAnyRole } = require('../middleware/auth');
+import express from "express";
+import Room from "../models/Room.js";
+import { authenticateToken, requireAdmin } from "../middleware/auth.js";
 
 const router = express.Router();
+
 
 // Get all rooms
 router.get('/', authenticateToken, requireAnyRole, async (req, res) => {
