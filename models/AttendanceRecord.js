@@ -1,15 +1,14 @@
-// models/AttendanceRecord.js
-const mongoose = require('mongoose');
+import mongoose from "mongoose";
 
 const attendanceRecordSchema = new mongoose.Schema({
   session: { 
     type: mongoose.Schema.Types.ObjectId, 
-    ref: 'AttendanceSession', 
+    ref: "AttendanceSession", 
     required: true 
   },
   user: { 
     type: mongoose.Schema.Types.ObjectId, 
-    ref: 'User', 
+    ref: "User", 
     required: true 
   },
   date: { 
@@ -18,7 +17,7 @@ const attendanceRecordSchema = new mongoose.Schema({
   },
   status: { 
     type: String, 
-    enum: ['present', 'late', 'absent'], 
+    enum: ["present", "late", "absent"], 
     required: true 
   },
   checkInTime: { 
@@ -33,4 +32,6 @@ const attendanceRecordSchema = new mongoose.Schema({
 // ✅ Ensure one record per user per session
 attendanceRecordSchema.index({ session: 1, user: 1 }, { unique: true });
 
-module.exports = mongoose.model('AttendanceRecord', attendanceRecordSchema);
+const AttendanceRecord = mongoose.model("AttendanceRecord", attendanceRecordSchema);
+
+export default AttendanceRecord;
