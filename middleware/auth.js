@@ -1,5 +1,5 @@
 import jwt from "jsonwebtoken";
-import User from "../models/users.js"; // ✅ Make sure capitalization matches the file name exactly
+import User from "../models/user.js"; // ✅ Make sure capitalization matches the file name exactly
 
 // ✅ Authenticate JWT token
 export const authenticateToken = async (req, res, next) => {
