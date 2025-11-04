@@ -206,4 +206,5 @@ router.delete("/rooms/:room/clear", authenticateToken, async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;
+
