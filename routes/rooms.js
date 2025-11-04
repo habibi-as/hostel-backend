@@ -324,4 +324,5 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
 });
 
 // ✅ Export router
-module.exports = router;
+export default router;
+
