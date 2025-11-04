@@ -1,15 +1,25 @@
-// MongoDB connection setup
-const mongoose = require('mongoose');
-require('dotenv').config();
+import mysql from "mysql2/promise";
 
-const connectDB = async () => {
+// ✅ Create a MySQL connection pool
+const db = mysql.createPool({
+  host: process.env.DB_HOST || "localhost",
+  user: process.env.DB_USER || "root",
+  password: process.env.DB_PASSWORD || "",
+  database: process.env.DB_NAME || "hostel_management",
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+});
+
+// ✅ Test the database connection
+(async () => {
   try {
-    await mongoose.connect(process.env.MONGO_URI);
-    console.log('✅ Connected to MongoDB Atlas');
+    const connection = await db.getConnection();
+    console.log("✅ Connected to MySQL Database");
+    connection.release();
   } catch (err) {
-    console.error('❌ MongoDB connection failed:', err);
-    process.exit(1);
+    console.error("❌ Database Connection Failed:", err.message);
   }
-};
+})();
 
-module.exports = connectDB;
+export default db;
