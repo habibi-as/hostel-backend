@@ -1,31 +1,25 @@
-const mongoose = require('mongoose');
+import mongoose from "mongoose";
 
 const visitorSchema = new mongoose.Schema(
   {
     name: {
       type: String,
-      required: [true, 'Visitor name is required'],
+      required: [true, "Visitor name is required"],
       trim: true,
     },
     contact: {
       type: String,
-      required: [true, 'Contact number is required'],
+      required: [true, "Visitor contact number is required"],
       trim: true,
     },
     purpose: {
       type: String,
-      required: [true, 'Purpose of visit is required'],
-      trim: true,
+      required: [true, "Purpose of visit is required"],
     },
     student: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      ref: "User", // Linked to the student they’re visiting
       required: false,
-    },
-    remarks: {
-      type: String,
-      default: '',
-      trim: true,
     },
     checkInTime: {
       type: Date,
@@ -33,15 +27,23 @@ const visitorSchema = new mongoose.Schema(
     },
     checkOutTime: {
       type: Date,
-      default: null,
+    },
+    remarks: {
+      type: String,
+      default: "",
     },
     status: {
       type: String,
-      enum: ['checked_in', 'checked_out'],
-      default: 'checked_in',
+      enum: ["checked_in", "checked_out"],
+      default: "checked_in",
     },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+  }
 );
 
-module.exports = mongoose.model('Visitor', visitorSchema);
+const Visitor = mongoose.model("Visitor", visitorSchema);
+
+export default Visitor;
+
