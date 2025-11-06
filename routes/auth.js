@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { body, validationResult } from "express-validator";
 import User from "../models/user.js";
+import { authenticateToken } from "../middleware/auth.js"; // ✅ import your token middleware
 
 const router = express.Router();
 
@@ -12,7 +13,9 @@ router.post(
   [
     body("name").notEmpty().withMessage("Name is required"),
     body("email").isEmail().withMessage("Valid email is required"),
-    body("password").isLength({ min: 6 }).withMessage("Password must be at least 6 characters"),
+    body("password")
+      .isLength({ min: 6 })
+      .withMessage("Password must be at least 6 characters"),
   ],
   async (req, res) => {
     try {
@@ -25,13 +28,17 @@ router.post(
       const existingUser = await User.findOne({ email });
 
       if (existingUser) {
-        return res.status(400).json({ success: false, message: "User already exists" });
+        return res
+          .status(400)
+          .json({ success: false, message: "User already exists" });
       }
 
       const newUser = new User({ name, email, password, role });
       await newUser.save();
 
-      res.status(201).json({ success: true, message: "User registered successfully" });
+      res
+        .status(201)
+        .json({ success: true, message: "User registered successfully" });
     } catch (error) {
       console.error("Registration error:", error);
       res.status(500).json({ success: false, message: "Registration failed" });
@@ -57,12 +64,16 @@ router.post(
       const user = await User.findOne({ email });
 
       if (!user) {
-        return res.status(404).json({ success: false, message: "User not found" });
+        return res
+          .status(404)
+          .json({ success: false, message: "User not found" });
       }
 
       const isMatch = await bcrypt.compare(password, user.password);
       if (!isMatch) {
-        return res.status(401).json({ success: false, message: "Invalid credentials" });
+        return res
+          .status(401)
+          .json({ success: false, message: "Invalid credentials" });
       }
 
       const token = jwt.sign(
@@ -93,19 +104,48 @@ router.post(
 router.get("/verify", async (req, res) => {
   try {
     const token = req.headers.authorization?.split(" ")[1];
-    if (!token) return res.status(401).json({ success: false, message: "No token provided" });
+    if (!token)
+      return res
+        .status(401)
+        .json({ success: false, message: "No token provided" });
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await User.findById(decoded.id).select("-password");
 
     if (!user) {
-      return res.status(404).json({ success: false, message: "User not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
     }
 
     res.json({ success: true, user });
   } catch (error) {
     console.error("Token verification error:", error);
-    res.status(401).json({ success: false, message: "Invalid or expired token" });
+    res
+      .status(401)
+      .json({ success: false, message: "Invalid or expired token" });
+  }
+});
+
+// 🟢 Get User Profile (Fixes “Route not found”)
+router.get("/profile", authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select("-password");
+    if (!user) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
+    }
+
+    res.json({
+      success: true,
+      user,
+    });
+  } catch (error) {
+    console.error("Profile fetch error:", error);
+    res
+      .status(500)
+      .json({ success: false, message: "Failed to fetch user profile" });
   }
 });
 
