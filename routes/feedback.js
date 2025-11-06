@@ -1,8 +1,9 @@
-const express = require('express');
-const { body, validationResult } = require('express-validator');
-const Feedback = require('../models/Feedback');
-const User = require('../models/user');
-const { authenticateToken, requireAnyRole } = require('../middleware/auth');
+// routes/feedback.js
+import express from "express";
+import { body, validationResult } from "express-validator";
+import Feedback from "../models/Feedback.js";
+import User from "../models/user.js";
+import { authenticateToken, requireAnyRole } from "../middleware/auth.js";
 
 const router = express.Router();
 
@@ -11,7 +12,7 @@ const router = express.Router();
  * @desc Get all feedback with pagination and optional filtering by service type
  * @access Admin & Student (any role)
  */
-router.get('/', authenticateToken, requireAnyRole, async (req, res) => {
+router.get("/", authenticateToken, requireAnyRole, async (req, res) => {
   try {
     const { serviceType, page = 1, limit = 10 } = req.query;
     const filter = {};
@@ -19,7 +20,7 @@ router.get('/', authenticateToken, requireAnyRole, async (req, res) => {
     if (serviceType) filter.serviceType = serviceType;
 
     const feedbacks = await Feedback.find(filter)
-      .populate('user', 'name email roomNo')
+      .populate("user", "name email roomNo")
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(parseInt(limit));
@@ -38,8 +39,8 @@ router.get('/', authenticateToken, requireAnyRole, async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Get feedback error:', error);
-    res.status(500).json({ success: false, message: 'Failed to fetch feedback' });
+    console.error("Get feedback error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch feedback" });
   }
 });
 
@@ -49,16 +50,16 @@ router.get('/', authenticateToken, requireAnyRole, async (req, res) => {
  * @access Student/Admin (any authenticated role)
  */
 router.post(
-  '/',
+  "/",
   authenticateToken,
   requireAnyRole,
   [
-    body('serviceType')
-      .isIn(['food', 'cleaning', 'security', 'maintenance', 'overall'])
-      .withMessage('Invalid service type'),
-    body('rating')
+    body("serviceType")
+      .isIn(["food", "cleaning", "security", "maintenance", "overall"])
+      .withMessage("Invalid service type"),
+    body("rating")
       .isInt({ min: 1, max: 5 })
-      .withMessage('Rating must be between 1 and 5'),
+      .withMessage("Rating must be between 1 and 5"),
   ],
   async (req, res) => {
     try {
@@ -66,7 +67,7 @@ router.post(
       if (!errors.isEmpty()) {
         return res.status(400).json({
           success: false,
-          message: 'Validation failed',
+          message: "Validation failed",
           errors: errors.array(),
         });
       }
@@ -84,18 +85,17 @@ router.post(
 
       res.status(201).json({
         success: true,
-        message: 'Feedback submitted successfully',
+        message: "Feedback submitted successfully",
         data: feedback,
       });
     } catch (error) {
-      console.error('Submit feedback error:', error);
+      console.error("Submit feedback error:", error);
       res.status(500).json({
         success: false,
-        message: 'Failed to submit feedback',
+        message: "Failed to submit feedback",
       });
     }
   }
 );
 
 export default router;
-
