@@ -1,8 +1,9 @@
-const express = require("express");
-const { body, validationResult } = require("express-validator");
-const { authenticateToken, requireAnyRole } = require("../middleware/auth");
-const ChatMessage = require("../models/ChatMessage");
-const User = require("../models/user");
+// routes/chat.js
+import express from "express";
+import { body, validationResult } from "express-validator";
+import { authenticateToken, requireAnyRole } from "../middleware/auth.js";
+import ChatMessage from "../models/ChatMessage.js";
+import User from "../models/user.js";
 
 const router = express.Router();
 
@@ -207,4 +208,3 @@ router.delete("/rooms/:room/clear", authenticateToken, async (req, res) => {
 });
 
 export default router;
-
