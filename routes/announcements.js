@@ -1,60 +1,74 @@
-const express = require("express");
-const { body, validationResult } = require("express-validator");
-const { authenticateToken, requireAdmin, requireAnyRole } = require("../middleware/auth");
-const LaundryRequest = require("../models/LaundryRequest");
-const User = require("../models/user");
+// routes/announcements.js
+import express from "express";
+import { body, validationResult } from "express-validator";
+import { authenticateToken, requireAdmin, requireAnyRole } from "../middleware/auth.js";
+import Announcement from "../models/Announcement.js";
+import User from "../models/user.js";
 
 const router = express.Router();
 
 /**
- * @route   GET /api/laundry
- * @desc    Get all laundry requests (students see only their own)
+ * @route   GET /api/announcements
+ * @desc    Get all announcements (students see active ones, admins see all)
  * @access  Admin + Student
  */
 router.get("/", authenticateToken, requireAnyRole, async (req, res) => {
   try {
-    const { status, page = 1, limit = 10 } = req.query;
+    const { page = 1, limit = 10, category = "", search = "" } = req.query;
     const currentUser = req.user;
     const query = {};
 
-    if (status) query.status = status;
     if (currentUser.role === "student") {
-      query.user = currentUser.id;
+      query.isActive = true; // Students only see active announcements
     }
 
-    const requests = await LaundryRequest.find(query)
-      .populate("user", "name email roomNo")
+    if (category) {
+      query.category = category;
+    }
+
+    if (search) {
+      query.title = { $regex: search, $options: "i" };
+    }
+
+    const announcements = await Announcement.find(query)
+      .populate("createdBy", "name email role")
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(parseInt(limit));
 
-    res.json({ success: true, data: requests });
+    const total = await Announcement.countDocuments(query);
+
+    res.json({
+      success: true,
+      data: announcements,
+      pagination: {
+        current: parseInt(page),
+        totalPages: Math.ceil(total / limit),
+        total,
+      },
+    });
   } catch (error) {
-    console.error("Get laundry requests error:", error);
+    console.error("Get announcements error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to fetch laundry requests",
+      message: "Failed to fetch announcements",
     });
   }
 });
 
 /**
- * @route   POST /api/laundry
- * @desc    Create new laundry request (students)
- * @access  Student
+ * @route   POST /api/announcements
+ * @desc    Create new announcement (Admin only)
+ * @access  Admin
  */
 router.post(
   "/",
   authenticateToken,
-  requireAnyRole,
+  requireAdmin,
   [
-    body("requestType")
-      .isIn(["wash", "iron", "dry_clean"])
-      .withMessage("Invalid request type"),
-    body("itemsCount")
-      .isInt({ min: 1 })
-      .withMessage("Items count must be at least 1"),
-    body("pickupDate").isISO8601().withMessage("Valid pickup date is required"),
+    body("title").notEmpty().withMessage("Title is required"),
+    body("content").notEmpty().withMessage("Content is required"),
+    body("category").optional().isIn(["general", "event", "maintenance", "alert"]),
   ],
   async (req, res) => {
     try {
@@ -67,47 +81,47 @@ router.post(
         });
       }
 
-      const { requestType, itemsCount, pickupDate } = req.body;
-      const userId = req.user.id;
+      const { title, content, category = "general" } = req.body;
+      const createdBy = req.user.id;
 
-      const newRequest = new LaundryRequest({
-        user: userId,
-        requestType,
-        itemsCount,
-        pickupDate,
-        status: "pending",
+      const newAnnouncement = new Announcement({
+        title,
+        content,
+        category,
+        createdBy,
+        isActive: true,
       });
 
-      await newRequest.save();
+      await newAnnouncement.save();
 
       res.status(201).json({
         success: true,
-        message: "Laundry request submitted successfully",
-        data: newRequest,
+        message: "Announcement created successfully",
+        data: newAnnouncement,
       });
     } catch (error) {
-      console.error("Create laundry request error:", error);
+      console.error("Create announcement error:", error);
       res.status(500).json({
         success: false,
-        message: "Failed to submit laundry request",
+        message: "Failed to create announcement",
       });
     }
   }
 );
 
 /**
- * @route   PUT /api/laundry/:id/status
- * @desc    Update laundry request status (admin only)
+ * @route   PUT /api/announcements/:id
+ * @desc    Update announcement (Admin only)
  * @access  Admin
  */
 router.put(
-  "/:id/status",
+  "/:id",
   authenticateToken,
   requireAdmin,
   [
-    body("status")
-      .isIn(["pending", "picked_up", "processing", "ready", "delivered"])
-      .withMessage("Invalid status"),
+    body("title").optional().notEmpty(),
+    body("content").optional().notEmpty(),
+    body("isActive").optional().isBoolean(),
   ],
   async (req, res) => {
     try {
@@ -120,36 +134,100 @@ router.put(
         });
       }
 
-      const { id } = req.params;
-      const { status, totalAmount, deliveryDate } = req.body;
-
-      const updateData = { status };
-      if (totalAmount) updateData.totalAmount = totalAmount;
-      if (status === "delivered" && deliveryDate) updateData.deliveryDate = deliveryDate;
-
-      const updated = await LaundryRequest.findByIdAndUpdate(id, updateData, { new: true });
+      const updated = await Announcement.findByIdAndUpdate(req.params.id, req.body, {
+        new: true,
+      });
 
       if (!updated) {
         return res.status(404).json({
           success: false,
-          message: "Laundry request not found",
+          message: "Announcement not found",
         });
       }
 
       res.json({
         success: true,
-        message: "Laundry request status updated successfully",
+        message: "Announcement updated successfully",
         data: updated,
       });
     } catch (error) {
-      console.error("Update laundry request error:", error);
+      console.error("Update announcement error:", error);
       res.status(500).json({
         success: false,
-        message: "Failed to update laundry request",
+        message: "Failed to update announcement",
       });
     }
   }
 );
 
+/**
+ * @route   DELETE /api/announcements/:id
+ * @desc    Delete announcement (Admin only)
+ * @access  Admin
+ */
+router.delete("/:id", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const deleted = await Announcement.findByIdAndDelete(req.params.id);
+
+    if (!deleted) {
+      return res.status(404).json({
+        success: false,
+        message: "Announcement not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Announcement deleted successfully",
+    });
+  } catch (error) {
+    console.error("Delete announcement error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete announcement",
+    });
+  }
+});
+
+/**
+ * @route   GET /api/announcements/:id
+ * @desc    Get single announcement by ID
+ * @access  Admin + Student
+ */
+router.get("/:id", authenticateToken, requireAnyRole, async (req, res) => {
+  try {
+    const announcement = await Announcement.findById(req.params.id).populate(
+      "createdBy",
+      "name email role"
+    );
+
+    if (!announcement) {
+      return res.status(404).json({
+        success: false,
+        message: "Announcement not found",
+      });
+    }
+
+    if (req.user.role === "student" && !announcement.isActive) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: announcement,
+    });
+  } catch (error) {
+    console.error("Get announcement by ID error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch announcement",
+    });
+  }
+});
+
 export default router;
+
 
