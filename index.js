@@ -10,7 +10,7 @@ import cron from "node-cron";
 // ✅ Middleware for auth & roles
 import { authenticateToken, requireAdmin, requireStudent } from "./middleware/auth.js";
 
-// ✅ Import all route files
+// ✅ Import route files
 import authRoutes from "./routes/auth.js";
 import userRoutes from "./routes/users.js";
 import roomRoutes from "./routes/rooms.js";
@@ -30,10 +30,10 @@ import feedbackRoutes from "./routes/feedback.js";
 import reportRoutes from "./routes/reports.js";
 import chatbotRoutes from "./routes/chatbot.js";
 
-// ✅ Import the attendance auto-mark cron
+// ✅ Attendance auto-mark cron
 import { markAbsentIfNoScan } from "./cron/attendanceCron.js";
 
-// Load environment variables
+// ✅ Load environment variables
 dotenv.config();
 
 const app = express();
@@ -86,7 +86,7 @@ app.get("/", (req, res) => {
   });
 });
 
-// ✅ CORS test route
+// ✅ CORS test
 app.get("/api/test-cors", (req, res) => {
   res.json({
     success: true,
@@ -96,7 +96,7 @@ app.get("/api/test-cors", (req, res) => {
 });
 
 // ===============================
-// ✅ ROUTE CONFIGURATION
+// ✅ ROUTES
 // ===============================
 app.use("/api/auth", authRoutes);
 app.use("/api/users", authenticateToken, userRoutes);
@@ -117,12 +117,12 @@ app.use("/api/feedback", authenticateToken, feedbackRoutes);
 app.use("/api/reports", authenticateToken, requireAdmin, reportRoutes);
 app.use("/api/chatbot", authenticateToken, chatbotRoutes);
 
-// ✅ 404 handler
+// ✅ 404
 app.use("*", (req, res) => {
   res.status(404).json({ success: false, message: "Route not found" });
 });
 
-// ✅ Global error handler
+// ✅ Error handler
 app.use((err, req, res, next) => {
   if (err.message === "Not allowed by CORS") {
     return res.status(403).json({
