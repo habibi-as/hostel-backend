@@ -1,32 +1,48 @@
-const mongoose = require('mongoose');
+import mongoose from "mongoose";
 
-const attendanceSchema = new mongoose.Schema({
-  user_id: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true,
+const attendanceSchema = new mongoose.Schema(
+  {
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: [true, "User reference is required"],
+    },
+    date: {
+      type: Date,
+      required: [true, "Date is required"],
+    },
+    status: {
+      type: String,
+      enum: ["present", "absent", "late", "on_leave"],
+      default: "present",
+    },
+    checkIn: {
+      type: String,
+      default: null,
+    },
+    checkOut: {
+      type: String,
+      default: null,
+    },
+    remarks: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    batch: {
+      type: String,
+      trim: true,
+    },
   },
-  date: {
-    type: String,
-    required: true,
-  },
-  status: {
-    type: String,
-    enum: ['present', 'late', 'absent'],
-    default: 'present',
-  },
-  check_in_time: {
-    type: String,
-  },
-  check_out_time: {
-    type: String,
-  },
-  created_at: {
-    type: Date,
-    default: Date.now,
-  },
-});
+  {
+    timestamps: true, // auto adds createdAt and updatedAt
+  }
+);
 
-const Attendance = mongoose.model('Attendance', attendanceSchema);
+// ✅ Prevent duplicate attendance for same user/date
+attendanceSchema.index({ user: 1, date: 1 }, { unique: true });
 
-module.exports = Attendance;
+const Attendance = mongoose.model("Attendance", attendanceSchema);
+
+export default Attendance;
+
