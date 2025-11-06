@@ -1,27 +1,28 @@
-const express = require('express');
-const Visitor = require('../models/Visitor');
-const { authenticateToken, requireAdmin, requireAnyRole } = require('../middleware/auth');
+// routes/visitors.js
+import express from "express";
+import Visitor from "../models/Visitor.js";
+import { authenticateToken, requireAdmin, requireAnyRole } from "../middleware/auth.js";
 
 const router = express.Router();
 
 /**
  * 🧾 GET all visitors (Admin + Warden)
  */
-router.get('/', authenticateToken, requireAnyRole, async (req, res) => {
+router.get("/", authenticateToken, requireAnyRole, async (req, res) => {
   try {
     const visitors = await Visitor.find()
-      .populate('student', 'name email')
+      .populate("student", "name email")
       .sort({ checkInTime: -1 });
 
     res.json({
       success: true,
-      data: visitors
+      data: visitors,
     });
   } catch (error) {
-    console.error('Get visitors error:', error);
+    console.error("Get visitors error:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch visitors'
+      message: "Failed to fetch visitors",
     });
   }
 });
@@ -29,7 +30,7 @@ router.get('/', authenticateToken, requireAnyRole, async (req, res) => {
 /**
  * ➕ Add new visitor (Admin/Warden)
  */
-router.post('/', authenticateToken, requireAnyRole, async (req, res) => {
+router.post("/", authenticateToken, requireAnyRole, async (req, res) => {
   try {
     const { name, contact, purpose, student, remarks } = req.body;
 
@@ -38,21 +39,21 @@ router.post('/', authenticateToken, requireAnyRole, async (req, res) => {
       contact,
       purpose,
       student,
-      remarks
+      remarks,
     });
 
     await visitor.save();
 
     res.json({
       success: true,
-      message: 'Visitor added successfully',
-      data: visitor
+      message: "Visitor added successfully",
+      data: visitor,
     });
   } catch (error) {
-    console.error('Add visitor error:', error);
+    console.error("Add visitor error:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to add visitor'
+      message: "Failed to add visitor",
     });
   }
 });
@@ -60,30 +61,30 @@ router.post('/', authenticateToken, requireAnyRole, async (req, res) => {
 /**
  * 🔁 Check-out visitor (Admin/Warden)
  */
-router.put('/:id/checkout', authenticateToken, requireAnyRole, async (req, res) => {
+router.put("/:id/checkout", authenticateToken, requireAnyRole, async (req, res) => {
   try {
     const visitor = await Visitor.findById(req.params.id);
     if (!visitor) {
       return res.status(404).json({
         success: false,
-        message: 'Visitor not found'
+        message: "Visitor not found",
       });
     }
 
     visitor.checkOutTime = new Date();
-    visitor.status = 'checked_out';
+    visitor.status = "checked_out";
     await visitor.save();
 
     res.json({
       success: true,
-      message: 'Visitor checked out successfully',
-      data: visitor
+      message: "Visitor checked out successfully",
+      data: visitor,
     });
   } catch (error) {
-    console.error('Check-out visitor error:', error);
+    console.error("Check-out visitor error:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to update visitor'
+      message: "Failed to update visitor",
     });
   }
 });
@@ -91,13 +92,13 @@ router.put('/:id/checkout', authenticateToken, requireAnyRole, async (req, res) 
 /**
  * 🗑️ Delete visitor (Admin only)
  */
-router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
+router.delete("/:id", authenticateToken, requireAdmin, async (req, res) => {
   try {
     const visitor = await Visitor.findById(req.params.id);
     if (!visitor) {
       return res.status(404).json({
         success: false,
-        message: 'Visitor not found'
+        message: "Visitor not found",
       });
     }
 
@@ -105,16 +106,17 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Visitor record deleted successfully'
+      message: "Visitor record deleted successfully",
     });
   } catch (error) {
-    console.error('Delete visitor error:', error);
+    console.error("Delete visitor error:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to delete visitor'
+      message: "Failed to delete visitor",
     });
   }
 });
 
 export default router;
+
 
