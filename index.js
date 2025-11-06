@@ -78,12 +78,6 @@ app.use(
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-// ✅ MongoDB Connection
-mongoose
-  .connect(process.env.MONGO_URI)
-  .then(() => console.log("✅ Connected to MongoDB"))
-  .catch((err) => console.error("❌ MongoDB Error:", err.message));
-
 // ✅ Health check route
 app.get("/", (req, res) => {
   res.json({
@@ -92,7 +86,7 @@ app.get("/", (req, res) => {
   });
 });
 
-// ✅ CORS test
+// ✅ CORS test route
 app.get("/api/test-cors", (req, res) => {
   res.json({
     success: true,
@@ -123,7 +117,7 @@ app.use("/api/feedback", authenticateToken, feedbackRoutes);
 app.use("/api/reports", authenticateToken, requireAdmin, reportRoutes);
 app.use("/api/chatbot", authenticateToken, chatbotRoutes);
 
-// ✅ 404
+// ✅ 404 handler
 app.use("*", (req, res) => {
   res.status(404).json({ success: false, message: "Route not found" });
 });
@@ -147,9 +141,26 @@ cron.schedule("0 0 * * *", async () => {
   console.log("✅ Attendance auto-update complete");
 });
 
-// ✅ Start server
+// ===============================
+// ✅ MongoDB Connection & Server Start (Render-Optimized)
+// ===============================
 const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
 
-// ✅ Export (for testing or compatibility)
+mongoose
+  .connect(process.env.MONGO_URI)
+  .then(() => {
+    console.log("✅ Connected to MongoDB");
+    console.log("🟢 Server initialized, waiting for Render port...");
+
+    server.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error("❌ MongoDB connection failed:", err.message);
+    process.exit(1);
+  });
+
+server.on("error", (err) => console.error("❌ Server error:", err));
+
 export default app;
