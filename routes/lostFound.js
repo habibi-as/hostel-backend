@@ -1,125 +1,143 @@
-const express = require('express');
-const { body, validationResult } = require('express-validator');
-const { authenticateToken, requireAdmin, requireAnyRole } = require('../middleware/auth');
-const upload = require('../middleware/upload');
-const LostFound = require('../models/LostFound');
+// routes/lostFound.js
+import express from "express";
+import { body, validationResult } from "express-validator";
+import LostFound from "../models/LostFound.js";
+import { authenticateToken, requireAnyRole, requireAdmin, requireStudent } from "../middleware/auth.js";
 
 const router = express.Router();
 
-// 🟩 Get all lost & found items
-router.get('/', authenticateToken, requireAnyRole, async (req, res) => {
+/**
+ * @route GET /api/lostfound
+ * @desc Get all lost/found items (everyone can view)
+ */
+router.get("/", authenticateToken, requireAnyRole, async (req, res) => {
   try {
-    const { status, category, page = 1, limit = 10 } = req.query;
-    const query = {};
-    if (status) query.status = status;
-    if (category) query.category = category;
+    const { status, type, page = 1, limit = 10 } = req.query;
+    const filter = {};
+    if (status) filter.status = status;
+    if (type) filter.type = type;
 
-    const items = await LostFound.find(query)
-      .populate('user', 'name email phone')
+    const items = await LostFound.find(filter)
+      .populate("user", "name email roomNo")
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(parseInt(limit));
 
-    const total = await LostFound.countDocuments(query);
+    const total = await LostFound.countDocuments(filter);
 
     res.json({
       success: true,
       data: {
         items,
-        pagination: {
-          current: parseInt(page),
-          pages: Math.ceil(total / limit),
-          total
-        }
+        pagination: { current: parseInt(page), pages: Math.ceil(total / limit), total },
+      },
+    });
+  } catch (error) {
+    console.error("Get lost/found items error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch lost/found items" });
+  }
+});
+
+/**
+ * @route POST /api/lostfound
+ * @desc Report a lost or found item (Student only)
+ */
+router.post(
+  "/",
+  authenticateToken,
+  requireStudent,
+  [
+    body("title").notEmpty().withMessage("Title is required"),
+    body("description").notEmpty().withMessage("Description is required"),
+    body("type").isIn(["lost", "found"]).withMessage("Type must be either 'lost' or 'found'"),
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ success: false, errors: errors.array() });
       }
-    });
-  } catch (error) {
-    console.error('Get lost and found items error:', error);
-    res.status(500).json({ success: false, message: 'Failed to fetch lost and found items' });
-  }
-});
 
-// 🟨 Get single item by ID
-router.get('/:id', authenticateToken, requireAnyRole, async (req, res) => {
-  try {
-    const item = await LostFound.findById(req.params.id).populate('user', 'name email phone');
-    if (!item) return res.status(404).json({ success: false, message: 'Item not found' });
+      const { title, description, type, location, date } = req.body;
 
-    res.json({ success: true, data: item });
-  } catch (error) {
-    res.status(500).json({ success: false, message: 'Failed to fetch item' });
-  }
-});
+      const item = new LostFound({
+        user: req.user.id,
+        title,
+        description,
+        type,
+        location,
+        date: date ? new Date(date) : new Date(),
+        status: "open",
+      });
 
-// 🟧 Report new lost item
-router.post('/report', authenticateToken, requireAnyRole, upload.single('image'), [
-  body('itemName').notEmpty(),
-  body('description').notEmpty(),
-  body('category').isIn(['electronics', 'clothing', 'books', 'accessories', 'other'])
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty())
-      return res.status(400).json({ success: false, errors: errors.array() });
+      await item.save();
 
-    const { itemName, description, category, locationFound } = req.body;
-    const image = req.file ? req.file.filename : null;
-
-    const item = new LostFound({
-      user: req.user.id,
-      itemName,
-      description,
-      category,
-      locationFound,
-      image
-    });
-
-    await item.save();
-    res.status(201).json({ success: true, message: 'Lost item reported successfully', data: item });
-  } catch (error) {
-    res.status(500).json({ success: false, message: 'Failed to report lost item' });
-  }
-});
-
-// 🟦 Update item status (Admin only)
-router.put('/:id/status', authenticateToken, requireAdmin, [
-  body('status').isIn(['reported', 'claimed', 'unclaimed'])
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty())
-      return res.status(400).json({ success: false, errors: errors.array() });
-
-    const { status, claimedBy } = req.body;
-    const item = await LostFound.findById(req.params.id);
-    if (!item) return res.status(404).json({ success: false, message: 'Item not found' });
-
-    item.status = status;
-    if (status === 'claimed' && claimedBy) {
-      item.claimedBy = claimedBy;
-      item.claimedAt = new Date();
+      res.status(201).json({
+        success: true,
+        message: "Lost/Found item reported successfully",
+        data: item,
+      });
+    } catch (error) {
+      console.error("Create lost/found error:", error);
+      res.status(500).json({ success: false, message: "Failed to report item" });
     }
-    await item.save();
-
-    res.json({ success: true, message: 'Item status updated successfully' });
-  } catch (error) {
-    res.status(500).json({ success: false, message: 'Failed to update item status' });
   }
-});
+);
 
-// 🟪 Delete item (Admin only)
-router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
+/**
+ * @route PUT /api/lostfound/:id/status
+ * @desc Update status of a report (Admin only)
+ */
+router.put(
+  "/:id/status",
+  authenticateToken,
+  requireAdmin,
+  [body("status").isIn(["open", "resolved", "closed"]).withMessage("Invalid status")],
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { status } = req.body;
+
+      const item = await LostFound.findById(id);
+      if (!item) {
+        return res.status(404).json({ success: false, message: "Item not found" });
+      }
+
+      item.status = status;
+      await item.save();
+
+      res.json({ success: true, message: "Status updated successfully", data: item });
+    } catch (error) {
+      console.error("Update lost/found status error:", error);
+      res.status(500).json({ success: false, message: "Failed to update status" });
+    }
+  }
+);
+
+/**
+ * @route DELETE /api/lostfound/:id
+ * @desc Delete a lost/found record (Admin or owner)
+ */
+router.delete("/:id", authenticateToken, requireAnyRole, async (req, res) => {
   try {
-    const item = await LostFound.findById(req.params.id);
-    if (!item) return res.status(404).json({ success: false, message: 'Item not found' });
+    const { id } = req.params;
+    const currentUser = req.user;
+
+    const item = await LostFound.findById(id);
+    if (!item)
+      return res.status(404).json({ success: false, message: "Item not found" });
+
+    // Only admin or the user who created it can delete
+    if (currentUser.role !== "admin" && item.user.toString() !== currentUser.id) {
+      return res.status(403).json({ success: false, message: "Access denied" });
+    }
 
     await item.deleteOne();
-    res.json({ success: true, message: 'Item deleted successfully' });
+    res.json({ success: true, message: "Item deleted successfully" });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Failed to delete item' });
+    console.error("Delete lost/found error:", error);
+    res.status(500).json({ success: false, message: "Failed to delete item" });
   }
 });
 
 export default router;
-
-
