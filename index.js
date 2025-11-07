@@ -30,6 +30,10 @@ import feedbackRoutes from "./routes/feedback.js";
 import reportRoutes from "./routes/reports.js";
 import chatbotRoutes from "./routes/chatbot.js";
 
+// ✅ Newly added for student pages
+import dashboardRoutes from "./routes/dashboard.js";
+import profileRoutes from "./routes/profile.js";
+
 // ✅ Attendance auto-mark cron
 import { markAbsentIfNoScan } from "./cron/attendanceCron.js";
 
@@ -38,6 +42,10 @@ dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
+
+// ===============================
+// ✅ SECURITY, CORS, AND RATE LIMIT
+// ===============================
 
 // ✅ Allowed frontend URLs
 const allowedOrigins = [
@@ -66,11 +74,12 @@ app.options("*", cors(corsOptions));
 // ✅ Helmet for security
 app.use(helmet({ crossOriginResourcePolicy: false }));
 
-// ✅ Rate limiter
+// ✅ Rate limiter (protect API from abuse)
 app.use(
   rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 100,
+    message: "Too many requests from this IP, please try again later.",
   })
 );
 
@@ -78,15 +87,16 @@ app.use(
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-// ✅ Health check route
+// ===============================
+// ✅ HEALTH & TEST ROUTES
+// ===============================
 app.get("/", (req, res) => {
   res.json({
     success: true,
-    message: "🚀 Backend is live and CORS configured correctly ✅",
+    message: "🚀 Backend is live and configured correctly ✅",
   });
 });
 
-// ✅ CORS test
 app.get("/api/test-cors", (req, res) => {
   res.json({
     success: true,
@@ -98,31 +108,40 @@ app.get("/api/test-cors", (req, res) => {
 // ===============================
 // ✅ ROUTES
 // ===============================
+
+// 🧠 Core routes
 app.use("/api/auth", authRoutes);
 app.use("/api/users", authenticateToken, userRoutes);
 app.use("/api/rooms", authenticateToken, roomRoutes);
 app.use("/api/attendance", authenticateToken, attendanceRoutes);
 app.use("/api/fees", authenticateToken, requireStudent, feeRoutes);
+
+// 🧾 Student-related
+app.use("/api/dashboard", authenticateToken, requireStudent, dashboardRoutes);
+app.use("/api/profile", authenticateToken, requireStudent, profileRoutes);
 app.use("/api/complaints", authenticateToken, requireStudent, complaintRoutes);
-app.use("/api/notices", authenticateToken, noticeRoutes);
-app.use("/api/lost-found", authenticateToken, lostFoundRoutes);
-app.use("/api/chat", authenticateToken, chatRoutes);
-app.use("/api/announcements", authenticateToken, requireAdmin, announcementRoutes);
 app.use("/api/food-menu", authenticateToken, foodMenuRoutes);
 app.use("/api/laundry", authenticateToken, requireStudent, laundryRoutes);
-app.use("/api/visitors", authenticateToken, requireAdmin, visitorRoutes);
-app.use("/api/maintenance", authenticateToken, requireAdmin, maintenanceRoutes);
-app.use("/api/events", authenticateToken, eventRoutes);
+app.use("/api/maintenance", authenticateToken, maintenanceRoutes);
+app.use("/api/lost-found", authenticateToken, lostFoundRoutes);
 app.use("/api/feedback", authenticateToken, feedbackRoutes);
+app.use("/api/events", authenticateToken, eventRoutes);
+app.use("/api/notices", authenticateToken, noticeRoutes);
+app.use("/api/visitors", authenticateToken, visitorRoutes);
+
+// 🧩 Admin / system routes
+app.use("/api/announcements", authenticateToken, requireAdmin, announcementRoutes);
 app.use("/api/reports", authenticateToken, requireAdmin, reportRoutes);
 app.use("/api/chatbot", authenticateToken, chatbotRoutes);
+app.use("/api/chat", authenticateToken, chatRoutes);
 
-// ✅ 404
+// ===============================
+// ✅ 404 & ERROR HANDLING
+// ===============================
 app.use("*", (req, res) => {
   res.status(404).json({ success: false, message: "Route not found" });
 });
 
-// ✅ Error handler
 app.use((err, req, res, next) => {
   if (err.message === "Not allowed by CORS") {
     return res.status(403).json({
@@ -134,7 +153,9 @@ app.use((err, req, res, next) => {
   res.status(500).json({ success: false, message: "Internal Server Error" });
 });
 
-// ✅ Daily Cron Job
+// ===============================
+// ✅ DAILY CRON JOB
+// ===============================
 cron.schedule("0 0 * * *", async () => {
   console.log("🕛 Running daily attendance check...");
   await markAbsentIfNoScan();
@@ -142,7 +163,7 @@ cron.schedule("0 0 * * *", async () => {
 });
 
 // ===============================
-// ✅ MongoDB Connection & Server Start (Render-Optimized)
+// ✅ DATABASE CONNECTION & SERVER START
 // ===============================
 const PORT = process.env.PORT || 10000;
 
