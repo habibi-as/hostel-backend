@@ -114,6 +114,60 @@ router.post(
     }
   }
 );
+// 🟢 Mark Attendance via QR
+router.post("/mark", authenticateToken, requireAnyRole, async (req, res) => {
+  try {
+    const { qrCode } = req.body;
+
+    // Ensure only students can mark themselves present
+    if (req.user.role !== "student") {
+      return res.status(403).json({ success: false, message: "Access denied" });
+    }
+
+    if (!qrCode) {
+      return res.status(400).json({ success: false, message: "QR code is required" });
+    }
+
+    // Example QR content: { studentId, date, session }
+    const decodedData = JSON.parse(Buffer.from(qrCode, "base64").toString());
+
+    // Validate that QR belongs to this student
+    if (decodedData.studentId !== req.user.id) {
+      return res.status(400).json({ success: false, message: "Invalid QR for this user" });
+    }
+
+    const today = new Date();
+    const date = today.toISOString().split("T")[0];
+
+    // Check if already marked
+    const existing = await Attendance.findOne({
+      student: req.user.id,
+      date: { $gte: new Date(date), $lt: new Date(`${date}T23:59:59`) },
+    });
+
+    if (existing) {
+      return res.json({ success: true, message: "Already marked present today" });
+    }
+
+    // Create attendance record
+    await Attendance.create({
+      student: req.user.id,
+      status: "present",
+      date: today,
+      checkIn: today.toLocaleTimeString(),
+      method: "QR",
+    });
+
+    res.json({
+      success: true,
+      message: "Attendance marked successfully via QR",
+    });
+  } catch (error) {
+    console.error("QR Attendance error:", error);
+    res.status(500).json({ success: false, message: "Failed to mark attendance" });
+  }
+});
+
 
 // ✅ Export router
 export default router;
