@@ -29,10 +29,7 @@ import eventRoutes from "./routes/events.js";
 import feedbackRoutes from "./routes/feedback.js";
 import reportRoutes from "./routes/reports.js";
 import chatbotRoutes from "./routes/chatbot.js";
-
-// ✅ Newly added for student pages
-import dashboardRoutes from "./routes/dashboard.js";
-import profileRoutes from "./routes/profile.js";
+import profileRoutes from "./routes/profile.js"; // ✅ Student profile (fetch/update)
 
 // ✅ Attendance auto-mark cron
 import { markAbsentIfNoScan } from "./cron/attendanceCron.js";
@@ -106,18 +103,19 @@ app.get("/api/test-cors", (req, res) => {
 });
 
 // ===============================
-// ✅ ROUTES
+// ✅ ROUTES (MATCH FRONTEND)
 // ===============================
 
-// 🧠 Core routes
+// 🔑 Auth & Users
 app.use("/api/auth", authRoutes);
 app.use("/api/users", authenticateToken, userRoutes);
+
+// 🏠 Core Modules
 app.use("/api/rooms", authenticateToken, roomRoutes);
 app.use("/api/attendance", authenticateToken, attendanceRoutes);
 app.use("/api/fees", authenticateToken, requireStudent, feeRoutes);
 
 // 🧾 Student-related
-app.use("/api/dashboard", authenticateToken, requireStudent, dashboardRoutes);
 app.use("/api/profile", authenticateToken, requireStudent, profileRoutes);
 app.use("/api/complaints", authenticateToken, requireStudent, complaintRoutes);
 app.use("/api/food-menu", authenticateToken, foodMenuRoutes);
@@ -129,7 +127,7 @@ app.use("/api/events", authenticateToken, eventRoutes);
 app.use("/api/notices", authenticateToken, noticeRoutes);
 app.use("/api/visitors", authenticateToken, visitorRoutes);
 
-// 🧩 Admin / system routes
+// 🧑‍💼 Admin-related
 app.use("/api/announcements", authenticateToken, requireAdmin, announcementRoutes);
 app.use("/api/reports", authenticateToken, requireAdmin, reportRoutes);
 app.use("/api/chatbot", authenticateToken, chatbotRoutes);
@@ -185,3 +183,4 @@ mongoose
 server.on("error", (err) => console.error("❌ Server error:", err));
 
 export default app;
+
