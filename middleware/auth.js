@@ -1,7 +1,7 @@
 import jwt from "jsonwebtoken";
-import User from "../models/user.js"; // ✅ Make sure capitalization matches the file name exactly
+import User from "../models/user.js";
 
-// ✅ Authenticate JWT token
+// ✅ Verify token and attach user ID + role
 export const authenticateToken = async (req, res, next) => {
   try {
     const authHeader = req.headers["authorization"];
@@ -14,19 +14,24 @@ export const authenticateToken = async (req, res, next) => {
       });
     }
 
-    // Verify token
+    // Verify JWT
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // ✅ Fetch user from MongoDB
-    const user = await User.findById(decoded.id).select("-password");
-    if (!user) {
+    // ✅ Check if user still exists in DB
+    const userExists = await User.findById(decoded.id).select("_id role");
+    if (!userExists) {
       return res.status(401).json({
         success: false,
         message: "User not found or token invalid",
       });
     }
 
-    req.user = user;
+    // ✅ Attach only lightweight info for later use
+    req.user = {
+      id: userExists._id.toString(),
+      role: userExists.role,
+    };
+
     next();
   } catch (err) {
     console.error("Auth error:", err);
@@ -37,7 +42,7 @@ export const authenticateToken = async (req, res, next) => {
   }
 };
 
-// ✅ Generic role-based access control
+// ✅ Role-based access control
 export const requireRole = (roles) => {
   return (req, res, next) => {
     if (!req.user) {
