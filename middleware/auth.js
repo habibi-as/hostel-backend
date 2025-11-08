@@ -1,7 +1,9 @@
 import jwt from "jsonwebtoken";
 import User from "../models/user.js";
 
-// ✅ Verify token and attach user ID + role
+/* =========================================================
+   🟢 AUTHENTICATE TOKEN
+========================================================= */
 export const authenticateToken = async (req, res, next) => {
   try {
     const authHeader = req.headers["authorization"];
@@ -17,19 +19,21 @@ export const authenticateToken = async (req, res, next) => {
     // Verify JWT
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // ✅ Check if user still exists in DB
-    const userExists = await User.findById(decoded.id).select("_id role");
-    if (!userExists) {
+    // ✅ Fetch user details from DB
+    const user = await User.findById(decoded.id).select("_id name email role");
+    if (!user) {
       return res.status(401).json({
         success: false,
         message: "User not found or token invalid",
       });
     }
 
-    // ✅ Attach only lightweight info for later use
+    // ✅ Attach user info to req for downstream routes
     req.user = {
-      id: userExists._id.toString(),
-      role: userExists.role,
+      id: user._id.toString(),
+      name: user.name,
+      email: user.email,
+      role: user.role,
     };
 
     next();
@@ -42,7 +46,9 @@ export const authenticateToken = async (req, res, next) => {
   }
 };
 
-// ✅ Role-based access control
+/* =========================================================
+   🟢 ROLE-BASED ACCESS CONTROL
+========================================================= */
 export const requireRole = (roles) => {
   return (req, res, next) => {
     if (!req.user) {
@@ -63,7 +69,7 @@ export const requireRole = (roles) => {
   };
 };
 
-// ✅ Predefined role helpers
+// ✅ Predefined helpers for clarity
 export const requireAdmin = requireRole(["admin"]);
 export const requireStudent = requireRole(["student"]);
 export const requireAnyRole = requireRole(["admin", "student", "warden"]);
