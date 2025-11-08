@@ -31,7 +31,6 @@ router.post(
 
       const { name, email, password, role = "student" } = req.body;
 
-      // Check for existing user
       const existingUser = await User.findOne({ email });
       if (existingUser) {
         return res.status(400).json({
@@ -40,7 +39,6 @@ router.post(
         });
       }
 
-      // Hash password
       const hashedPassword = await bcrypt.hash(password, 10);
 
       const newUser = new User({
@@ -103,7 +101,6 @@ router.post(
         });
       }
 
-      // Generate JWT token
       const token = jwt.sign(
         { id: user._id, role: user.role },
         process.env.JWT_SECRET,
@@ -138,9 +135,10 @@ router.get("/verify", async (req, res) => {
   try {
     const token = req.headers.authorization?.split(" ")[1];
     if (!token) {
-      return res
-        .status(401)
-        .json({ success: false, message: "No token provided" });
+      return res.status(401).json({
+        success: false,
+        message: "No token provided",
+      });
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
@@ -176,7 +174,15 @@ router.get("/verify", async (req, res) => {
 ========================================================= */
 router.get("/profile", authenticateToken, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select("-password");
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid authentication payload",
+      });
+    }
+
+    const user = await User.findById(userId).select("-password");
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -184,7 +190,7 @@ router.get("/profile", authenticateToken, async (req, res) => {
       });
     }
 
-    res.json({
+    res.status(200).json({
       success: true,
       user: {
         id: user._id,
