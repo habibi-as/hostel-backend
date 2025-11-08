@@ -7,7 +7,7 @@ import User from "../models/user.js";
 import Room from "../models/Room.js";
 import Complaint from "../models/Complaint.js";
 import Fee from "../models/Fee.js";
-import Laundry from "../models/Laundry.js"; // ✅ Added for student stats
+import Laundry from "../models/laundry.js"; // ✅ Added for student stats
 
 const router = express.Router();
 
