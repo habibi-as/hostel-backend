@@ -1,12 +1,13 @@
 import express from "express";
 import bcrypt from "bcryptjs";
 import { body, validationResult } from "express-validator";
-import { authenticateToken, requireAdmin, requireAnyRole } from "../middleware/auth.js";
+import { authenticateToken, requireAdmin, requireAnyRole, requireStudent } from "../middleware/auth.js";
 import upload from "../middleware/upload.js";
 import User from "../models/user.js";
 import Room from "../models/Room.js";
 import Complaint from "../models/Complaint.js";
 import Fee from "../models/Fee.js";
+import Laundry from "../models/Laundry.js"; // ✅ Added for student stats
 
 const router = express.Router();
 
@@ -218,6 +219,31 @@ router.get("/stats/dashboard", authenticateToken, requireAdmin, async (req, res)
   } catch (error) {
     console.error("Dashboard stats error:", error);
     res.status(500).json({ success: false, message: "Failed to fetch stats" });
+  }
+});
+
+// ✅ Student Dashboard Stats
+router.get("/stats/student", authenticateToken, requireStudent, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const [complaints, unpaidFees, laundryRequests] = await Promise.all([
+      Complaint.countDocuments({ student: userId }),
+      Fee.countDocuments({ student: userId, status: "unpaid" }),
+      Laundry.countDocuments({ student: userId }),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        totalComplaints: complaints,
+        pendingFees: unpaidFees,
+        laundryCount: laundryRequests,
+      },
+    });
+  } catch (error) {
+    console.error("Student dashboard stats error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch student dashboard data" });
   }
 });
 
