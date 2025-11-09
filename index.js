@@ -30,6 +30,7 @@ import feedbackRoutes from "./routes/feedback.js";
 import reportRoutes from "./routes/reports.js";
 import chatbotRoutes from "./routes/chatbot.js";
 import profileRoutes from "./routes/profile.js"; // ✅ Student profile (fetch/update)
+import studentDashboardRoutes from "./routes/studentDashboard.js"; // ✅ ✅ ADDED THIS LINE
 
 // ✅ Attendance auto-mark cron
 import { markAbsentIfNoScan } from "./cron/attendanceCron.js";
@@ -44,13 +45,11 @@ const server = http.createServer(app);
 // ✅ SECURITY, CORS, AND RATE LIMIT
 // ===============================
 
-// ✅ Allowed frontend URLs
 const allowedOrigins = [
   "https://asuraxhostel.netlify.app",
   "http://localhost:3000",
 ];
 
-// ✅ CORS setup
 const corsOptions = {
   origin: function (origin, callback) {
     if (!origin || allowedOrigins.includes(origin)) callback(null, true);
@@ -67,11 +66,8 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
-
-// ✅ Helmet for security
 app.use(helmet({ crossOriginResourcePolicy: false }));
 
-// ✅ Rate limiter (protect API from abuse)
 app.use(
   rateLimit({
     windowMs: 15 * 60 * 1000,
@@ -80,7 +76,6 @@ app.use(
   })
 );
 
-// ✅ Body parsers
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
@@ -126,6 +121,9 @@ app.use("/api/feedback", authenticateToken, feedbackRoutes);
 app.use("/api/events", authenticateToken, eventRoutes);
 app.use("/api/notices", authenticateToken, noticeRoutes);
 app.use("/api/visitors", authenticateToken, visitorRoutes);
+
+// ✅ ✅ STUDENT DASHBOARD ROUTE (NEW)
+app.use("/api/student/dashboard", authenticateToken, requireStudent, studentDashboardRoutes);
 
 // 🧑‍💼 Admin-related
 app.use("/api/announcements", authenticateToken, requireAdmin, announcementRoutes);
@@ -183,4 +181,3 @@ mongoose
 server.on("error", (err) => console.error("❌ Server error:", err));
 
 export default app;
-
