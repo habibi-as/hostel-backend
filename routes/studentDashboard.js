@@ -7,14 +7,10 @@ import { authenticateToken, requireAnyRole } from "../middleware/auth.js";
 
 const router = express.Router();
 
-/* ======================================
-   🎓 STUDENT DASHBOARD STATS
-====================================== */
 router.get("/stats", authenticateToken, requireAnyRole, async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // ✅ Attendance (total & present)
     const totalDays = await Attendance.countDocuments({ student: userId });
     const presentDays = await Attendance.countDocuments({
       student: userId,
@@ -23,18 +19,14 @@ router.get("/stats", authenticateToken, requireAnyRole, async (req, res) => {
     const attendancePercentage =
       totalDays > 0 ? Math.round((presentDays / totalDays) * 100) : 0;
 
-    // ✅ Pending Fees
-    const pendingFees = await Fee.find({
-      student: userId,
-      status: "pending",
-    }).sort({ dueDate: 1 });
+    const pendingFees = await Fee.find({ student: userId, status: "pending" }).sort({
+      dueDate: 1,
+    });
 
-    // ✅ Complaints
     const complaints = await Complaint.find({ student: userId }).sort({
       createdAt: -1,
     });
 
-    // ✅ Upcoming Events (next 7 days)
     const today = new Date();
     const nextWeek = new Date();
     nextWeek.setDate(today.getDate() + 7);
